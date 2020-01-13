@@ -1,0 +1,162 @@
+#!/usr/bin/env python
+
+# Copyright 2019 Akamai Technologies, Inc. All Rights Reserved
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+from __future__ import print_function
+import os
+import sys
+import json
+import requests
+import time
+import base64
+import hmac
+import hashlib
+import platform
+from datetime import datetime
+import logging
+import six
+
+from config import EdgeGridConfig
+
+# If all parameters are set already, use them.  Otherwise
+# use the config
+config = EdgeGridConfig({"verbose": False}, "default")
+verbose = getattr(config, "verbose", False)
+
+SOURCE = "akamai-cli/eaa"
+
+datef = "%Y-%m-%d %H:%M"
+akamai_eaa_url = config.base_url
+LOG = logging.getLogger(__name__)
+collection_delay_minutes = 1
+log_file = None
+interval_minutes = 1
+
+class Etl(object):
+    """ETL"""
+
+    def __init__(self, api_version='v1'):
+        self._api_ver = api_version
+        self._content_type_json = {'content-type': 'application/json'}
+        self._content_type_form = {'content-type': 'application/x-www-form-urlencoded'}
+        self._headers = None
+
+    def get_signature(self, access_key_id, secret_access_key):
+        encoding = 'ascii'
+        msg = "%s:%s" % (access_key_id, secret_access_key)
+        signature = hmac.new(
+            key=secret_access_key.encode(encoding),
+            msg=msg.encode(encoding),
+            digestmod=hashlib.sha256).digest()
+        # Base64 encode the signature
+        signature = base64.b64encode(signature)
+        LOG.debug("Signature: %s" % signature.decode(encoding))
+        return signature.decode(encoding)
+
+    def ensure_signature_in_header(self, api_key, secret_key):
+        signature = self.get_signature(access_key_id=api_key, secret_access_key=secret_key)
+        self._headers = {'Authorization': 'Basic %s:%s' % (api_key, signature)}
+        self._headers.update(self._content_type_json)
+
+    def get_logs(self, mgmt_url, api_key, secret_key,  drpc_args):
+        scroll_id = None
+        try:
+            """fetches the logs for given drpc args"""
+            api_url = '{}/api/{}/analytics/ops'.format(
+                mgmt_url,
+                self._api_ver
+            )
+
+            self.ensure_signature_in_header(api_key=api_key, secret_key=secret_key)
+            LOG.debug("request headers: %s"  % self._headers)
+            resp = requests.post(
+                api_url,
+                data=drpc_args,
+                headers=self._headers,
+                allow_redirects=False
+            )
+
+            if resp.status_code != requests.codes.ok:
+                LOG.error("invalid API response status code: %s" % resp.status_code)
+                return None
+
+            resj = resp.json()
+            LOG.debug("JSON> %s" % resj)
+
+            if 'message' in resj:
+                msg = resj.get('message')[0][1]
+                scroll_id = msg.get('scroll_id')
+                LOG.debug("scroll_id: %s" % scroll_id)
+                count = 0
+                for timestamp, response in six.iteritems(msg):
+                    try:
+                        if not timestamp.isdigit():
+                            LOG.warning("Ignored timestamp '%s': %s" % (timestamp, response))
+                            continue
+                        LOG.debug("flog is %s" % type(response['flog']).__name__)
+                        LOG.debug("Scanned timestamp: %s" % timestamp)
+                        gmttime = datetime.fromtimestamp(int(timestamp)/1000)
+                        if isinstance(response, dict) and 'flog' in response:
+                            print(' '.join([gmttime.isoformat(), response['flog']]))
+                            LOG.debug("### flog ## %s" % response['flog'])
+                            count += 1
+                    except Exception:
+                        LOG.exception("error parsing response")
+
+            else:
+                LOG.error('Error: no data(message) in response.')
+                LOG.error(drpc_args)
+                LOG.error(json.dumps(resj))
+            resp.close()
+        except Exception as e:
+            if "resp" in locals():
+                LOG.debug("resp.status_code %s" % resp.status_code)
+                LOG.debug("resp.text %s" % resp.text)
+            LOG.error(drpc_args)
+            LOG.exception("Exception in get_logs")
+        return scroll_id
+
+
+if __name__ == "__main__":
+
+    api_key = config.eaa_api_key
+    secret_key = config.eaa_api_secret
+
+    log_level = logging.ERROR
+    if config.verbose:
+        log_level = logging.DEBUG
+
+    logging.basicConfig(filename=log_file, level=log_level,
+        format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
+
+    etl = Etl();
+
+    # end time in milliseconds
+    ets = int(time.mktime(time.localtime()) * 1000 - (collection_delay_minutes * 60 * 1000))
+    # start time in milliseconds
+    sts = int(ets - (interval_minutes * 60 * 1000) - (collection_delay_minutes * 60 * 1000))
+
+    LOG.debug("Python %s" % platform.python_version())
+    LOG.debug("Fetching from %s to %s..." % (sts, ets))
+
+    # Use scroll paging
+    drpc_args = '{"sts":'+ str(sts) + ',"ets":'+ str(ets) + \
+                ',"metrics":"logs","es_fields":"flog","limit":"1000","sub_metrics":"scroll","source": "%s"}' % SOURCE
+    scroll_id = etl.get_logs(akamai_eaa_url.strip(), api_key, secret_key, drpc_args)
+    # Check for scroll_id to issue another request
+    while (scroll_id != None):
+        drpc_args = '{"sts":'+ str(sts) +',"ets":'+ str(ets) + \
+           ',"metrics":"logs","es_fields":"flog","limit":"1000","sub_metrics":"scroll","source":"' + SOURCE + '","scroll_id":"'+scroll_id+'"}'
+        scroll_id = etl.get_logs(akamai_eaa_url.strip(), api_key, secret_key, drpc_args)

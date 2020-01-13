@@ -1,0 +1,12 @@
+{
+  "requirements": {
+    "python": "2.7.6"
+  },
+  "commands": [
+    {
+      "name": "eaa",
+      "version": "0.1.0",
+      "description": "Akamai CLI for EAA common operations, written in Python"
+    }
+  ]
+}

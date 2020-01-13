@@ -1,0 +1,9 @@
+/vendor/
+/node_modules/
+__pycache__
+.edgerc
+/venv*/
+*.pyc
+/test/
+.DS_Store
+.vscode
