@@ -1,6 +1,6 @@
 # Python edgegrid module - CONFIG for EAA CLI module
 """ 
- Copyright 2019 Akamai Technologies, Inc. All Rights Reserved.
+ Copyright 2020 Akamai Technologies, Inc. All Rights Reserved.
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
 
@@ -41,10 +41,11 @@ class EdgeGridConfig():
         subparsers = parser.add_subparsers(dest="command", help='EAA object to manipulate')
 
         event_parser = subparsers.add_parser("log", help="Fetch last log lines")
-        event_parser.add_argument('log_type', nargs='?', default="threat", 
+        event_parser.add_argument('log_type', nargs='?', default="access", 
                                   choices=['access', 'admin'], help="Log line type")
         event_parser.add_argument('--start', '-s', type=int, help="Start datetime (EPOCH)")
         event_parser.add_argument('--end', '-e', type=int, help="End datetime (EPOCH)")
+        event_parser.add_argument('--output', '-o', help="Output file, default is stdout")
         event_parser.add_argument('--tail', '-f', action='store_true', default=False, 
                                   help="""Do not stop when most recent log is reached, 
                                   but rather to wait for additional data to be appended to the input.""")

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# Copyright 2019 Akamai Technologies, Inc. All Rights Reserved
+# Copyright 2020 Akamai Technologies, Inc. All Rights Reserved
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -36,13 +36,14 @@ config = EdgeGridConfig({"verbose": False}, "default")
 verbose = getattr(config, "verbose", False)
 
 SOURCE = "akamai-cli/eaa"
+LOG = logging.getLogger(__name__)
 
 datef = "%Y-%m-%d %H:%M"
-akamai_eaa_url = config.base_url
-LOG = logging.getLogger(__name__)
 collection_delay_minutes = 1
 log_file = None
-interval_minutes = 1
+poll_interval_sec = 5
+line_count = 0
+
 
 class Etl(object):
     """ETL"""
@@ -70,12 +71,13 @@ class Etl(object):
         self._headers = {'Authorization': 'Basic %s:%s' % (api_key, signature)}
         self._headers.update(self._content_type_json)
 
-    def get_logs(self, mgmt_url, api_key, secret_key,  drpc_args):
+    def get_logs(self, api_key, secret_key, drpc_args, output):
+        global line_count
         scroll_id = None
         try:
             """fetches the logs for given drpc args"""
             api_url = '{}/api/{}/analytics/ops'.format(
-                mgmt_url,
+                config.base_url,
                 self._api_ver
             )
 
@@ -89,7 +91,7 @@ class Etl(object):
             )
 
             if resp.status_code != requests.codes.ok:
-                LOG.error("invalid API response status code: %s" % resp.status_code)
+                LOG.error("Invalid API response status code: %s" % resp.status_code)
                 return None
 
             resj = resp.json()
@@ -103,13 +105,14 @@ class Etl(object):
                 for timestamp, response in six.iteritems(msg):
                     try:
                         if not timestamp.isdigit():
-                            LOG.warning("Ignored timestamp '%s': %s" % (timestamp, response))
+                            LOG.debug("Ignored timestamp '%s': %s" % (timestamp, response))
                             continue
                         LOG.debug("flog is %s" % type(response['flog']).__name__)
                         LOG.debug("Scanned timestamp: %s" % timestamp)
                         gmttime = datetime.fromtimestamp(int(timestamp)/1000)
                         if isinstance(response, dict) and 'flog' in response:
-                            print(' '.join([gmttime.isoformat(), response['flog']]))
+                            out.write("%s\n" % ' '.join([gmttime.isoformat(), response['flog']]))
+                            line_count += 1
                             LOG.debug("### flog ## %s" % response['flog'])
                             count += 1
                     except Exception:
@@ -129,34 +132,72 @@ class Etl(object):
         return scroll_id
 
 
+def log_level():
+    if config.debug:
+        return logging.DEBUG
+    elif config.verbose:
+        return logging.INFO
+    else:
+        return logging.ERROR
+
+
 if __name__ == "__main__":
 
     api_key = config.eaa_api_key
     secret_key = config.eaa_api_secret
 
-    log_level = logging.ERROR
-    if config.verbose:
-        log_level = logging.DEBUG
-
-    logging.basicConfig(filename=log_file, level=log_level,
-        format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
+    logging.basicConfig(filename=log_file, level=log_level(),
+        format='%(asctime)s [%(levelname)s] %(message)s')
 
     etl = Etl();
 
-    # end time in milliseconds
-    ets = int(time.mktime(time.localtime()) * 1000 - (collection_delay_minutes * 60 * 1000))
-    # start time in milliseconds
-    sts = int(ets - (interval_minutes * 60 * 1000) - (collection_delay_minutes * 60 * 1000))
-
     LOG.debug("Python %s" % platform.python_version())
-    LOG.debug("Fetching from %s to %s..." % (sts, ets))
+    LOG.info("PID: %s" % os.getpid())
 
-    # Use scroll paging
-    drpc_args = '{"sts":'+ str(sts) + ',"ets":'+ str(ets) + \
-                ',"metrics":"logs","es_fields":"flog","limit":"1000","sub_metrics":"scroll","source": "%s"}' % SOURCE
-    scroll_id = etl.get_logs(akamai_eaa_url.strip(), api_key, secret_key, drpc_args)
-    # Check for scroll_id to issue another request
-    while (scroll_id != None):
-        drpc_args = '{"sts":'+ str(sts) +',"ets":'+ str(ets) + \
-           ',"metrics":"logs","es_fields":"flog","limit":"1000","sub_metrics":"scroll","source":"' + SOURCE + '","scroll_id":"'+scroll_id+'"}'
-        scroll_id = etl.get_logs(akamai_eaa_url.strip(), api_key, secret_key, drpc_args)
+    if config.output is None:
+        out = sys.stdout
+    else:
+        LOG.info("Output file: %s" % config.output)
+        LOG.info("Poll interval: %s seconds" % poll_interval_sec)
+        out = open(config.output, 'w+')
+
+    try:
+        while True:
+            # end time in milliseconds
+            ets = int(time.mktime(time.localtime()) * 1000 - (collection_delay_minutes * 60 * 1000))
+            # start time in milliseconds
+            sts = int(ets - (poll_interval_sec * 1000) - (collection_delay_minutes * 60 * 1000))
+
+            LOG.debug("Fetching log[%s] from %s to %s..." % (config.log_type, sts, ets))
+
+            if config.log_type == "access":
+                # Use scroll paging
+                drpc_args = '{"sts":'+ str(sts) + ',"ets":'+ str(ets) + \
+                            ',"metrics":"logs","es_fields":"flog","limit":"1000","sub_metrics":"scroll","source": "%s"}' % SOURCE
+                scroll_id = etl.get_logs(api_key, secret_key, drpc_args, out)
+                # Check for scroll_id to issue another request
+                while (scroll_id != None):
+                    drpc_args = '{"sts":'+ str(sts) +',"ets":'+ str(ets) + \
+                    ',"metrics":"logs","es_fields":"flog","limit":"1000","sub_metrics":"scroll","source":"' + SOURCE + '","scroll_id":"'+scroll_id+'"}'
+                    scroll_id = etl.get_logs(api_key, secret_key, drpc_args, out)
+
+                out.flush()
+
+            elif config.type == "admin":
+                pass
+            else:
+                raise Exception("Not supported log type: %s" % config.type)
+
+            if not config.tail:
+                break
+            else:
+                LOG.debug("Now waiting %s seconds..." % poll_interval_sec)
+                time.sleep(poll_interval_sec)
+    except KeyboardInterrupt as ki:
+        LOG.info("Keyboard interupt")
+    finally:
+        if out is not None and out != sys.stdout:
+            LOG.debug("Closing output file...")
+            out.close()
+
+        LOG.info("%s log lines were fetched." % line_count)
