@@ -1,9 +1,5 @@
 # Akamai CLI: Enterprise Application Access
 
-## Table of contents
-
-<!-- TOC -->autoauto- [Akamai CLI: Enterprise Application Access](#akamai-cli-enterprise-application-access)auto    - [Table of contents](#table-of-contents)auto    - [Introduction](#introduction)auto    - [Feature highlight](#feature-highlight)auto    - [Installation](#installation)auto        - [Configuration file](#configuration-file)auto        - [Upgrade](#upgrade)auto    - [Fields documentation](#fields-documentation)auto    - [Examples](#examples)auto        - [Pull EAA logs](#pull-eaa-logs)auto    - [Troubleshooting](#troubleshooting)autoauto<!-- /TOC -->
-
 ## Introduction
 
 [Enterprise Application Access (EAA)](https://www.akamai.com/us/en/products/security/enterprise-application-access.jsp) comes with a full suite of APIs. Yet you need to build scripts to be able to interact with the service.
