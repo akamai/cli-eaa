@@ -47,15 +47,15 @@ You can obtain key and secret from your EAA administator, in **System** > **Sett
 
 Pull user access logs, block till new logs are received
 ```
-akamai eaa log access -tail
+$ akamai eaa log access -tail
 ```
 
 Send the access log to a file (utf-8 encoding is being used):
 ```
-akamai eaa log access -tail -o /tmp/eaa_access.log
+$ akamai eaa log access -tail -o /tmp/eaa_access.log
 ```
 
 Pull admin logs, block till new logs are received
 ```
-akamai eaa log admin -tail
+$ akamai eaa log admin -tail
 ```
