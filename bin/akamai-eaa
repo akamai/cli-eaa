@@ -134,9 +134,9 @@ class Etl(object):
                                 continue
                             LOG.debug("flog is %s" % type(response['flog']).__name__)
                             LOG.debug("Scanned timestamp: %s" % timestamp)
-                            gmttime = datetime.fromtimestamp(int(timestamp)/1000)
+                            local_time = datetime.fromtimestamp(int(timestamp)/1000)
                             if isinstance(response, dict) and 'flog' in response:
-                                line = "%s\n" % ' '.join([gmttime.isoformat(), response['flog']])
+                                line = "%s\n" % ' '.join([local_time.isoformat(), response['flog']])
                                 out.write(line.encode("utf8"))
                                 LOG.debug("### flog ## %s" % response['flog'])
                                 line_count += 1
@@ -146,8 +146,8 @@ class Etl(object):
                 elif config.log_type == LOG_TYPE_ADMIN:
                     for item in msg.get('data'):
                         try:
-                            gmttime = datetime.fromtimestamp(int(item.get('ts')/1000))
-                            line = u"{},{}\n".format(gmttime.isoformat(), item.get('splunk_line'))
+                            local_time = datetime.fromtimestamp(int(item.get('ts')/1000))
+                            line = u"{},{}\n".format(local_time.isoformat(), item.get('splunk_line'))
                             out.write(line.encode("utf8"))
                             line_count += 1
                             count += 1
@@ -178,11 +178,11 @@ def log_level():
 
 
 def date_boundaries():
-    # end time in milliseconds
+    # end time in milliseconds, now minus collection delay
     ets = int(time.mktime(time.localtime()) * 1000 - (collection_delay_minutes * 60 * 1000))
     if not config.tail and config.end:
         ets = config.end * 1000
-    # start time in milliseconds
+    # start time in milliseconds: end time minus poll interval
     sts = int(ets - (poll_interval_sec * 1000))
     if not config.tail and config.start:
         sts = config.start * 1000
@@ -190,7 +190,7 @@ def date_boundaries():
 
 
 def exit_gracefully(signum, frame):
-    LOG.info("Stop because SIGTERM")
+    LOG.info("Stop due to SIGTERM or SIGINT signal received")
     stop_event.set()
 
 
@@ -200,6 +200,7 @@ if __name__ == "__main__":
         format='%(asctime)s [%(levelname)s] %(threadName)s %(message)s')
 
     signal.signal(signal.SIGTERM, exit_gracefully)
+    signal.signal(signal.SIGINT, exit_gracefully)
     etl = Etl();
 
     LOG.debug("Python %s" % platform.python_version())
@@ -215,6 +216,7 @@ if __name__ == "__main__":
     try:
         while True:
             ets, sts = date_boundaries()
+            s = time.time()
             LOG.info("Fetching log[%s] from %s to %s..." % (config.log_type, sts, ets))
             if config.log_type in (LOG_TYPE_ADMIN, LOG_TYPE_EVENT):
                 # Use scroll paging
@@ -232,13 +234,11 @@ if __name__ == "__main__":
             if not config.tail:
                 break
             else:
-                LOG.debug("Now waiting %s seconds..." % poll_interval_sec)
-                #time.sleep(poll_interval_sec)
-                stop_event.wait(poll_interval_sec)
+                elapsed = time.time() - s
+                LOG.debug("Now waiting %s seconds..." % (poll_interval_sec - elapsed))
+                stop_event.wait(poll_interval_sec - elapsed)
                 if stop_event.is_set():
                     break
-    except KeyboardInterrupt as ki:
-        LOG.info("Keyboard interrupt")
     except Exception as e:
         LOG.exception("General exception")
     finally:

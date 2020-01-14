@@ -5,8 +5,8 @@
   "commands": [
     {
       "name": "eaa",
-      "version": "0.1.0",
-      "description": "Akamai CLI for EAA common operations, written in Python"
+      "version": "0.1.1",
+      "description": "Akamai CLI for Enterprise Application Access (EAA)"
     }
   ]
 }
