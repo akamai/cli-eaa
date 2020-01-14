@@ -36,12 +36,16 @@ config = EdgeGridConfig({"verbose": False}, "default")
 verbose = getattr(config, "verbose", False)
 
 SOURCE = "akamai-cli/eaa"
+LOG_TYPE_EVENT = "access"
+LOG_TYPE_ADMIN = "admin"
+ADMINEVENT_API = "{}/api/{}/adminevents-reports/ops/splunk-query"
+ACCESSLOG_API = "{}/api/{}/analytics/ops"
 LOG = logging.getLogger(__name__)
 
 datef = "%Y-%m-%d %H:%M"
-collection_delay_minutes = 1
+collection_delay_minutes = 5
 log_file = None
-poll_interval_sec = 5
+poll_interval_sec = 15
 line_count = 0
 
 
@@ -71,12 +75,16 @@ class Etl(object):
         self._headers = {'Authorization': 'Basic %s:%s' % (api_key, signature)}
         self._headers.update(self._content_type_json)
 
-    def get_logs(self, api_key, secret_key, drpc_args, output):
+    def get_logs(self, api_key, secret_key, drpc_args, logtype=LOG_TYPE_EVENT, output=sys.stdout):
         global line_count
         scroll_id = None
+        if logtype == LOG_TYPE_ADMIN:
+            base_api_url = ADMINEVENT_API
+        else:
+            base_api_url = ACCESSLOG_API
         try:
-            """fetches the logs for given drpc args"""
-            api_url = '{}/api/{}/analytics/ops'.format(
+            # Fetches the logs for given drpc args
+            api_url = base_api_url.format(
                 config.base_url,
                 self._api_ver
             )
@@ -98,25 +106,48 @@ class Etl(object):
             LOG.debug("JSON> %s" % resj)
 
             if 'message' in resj:
-                msg = resj.get('message')[0][1]
-                scroll_id = msg.get('scroll_id')
+                # Get msg and scroll_id based on the type of logs
+                # Since it is two different API in the back-end
+                if config.log_type == LOG_TYPE_EVENT:
+                    msg = resj.get('message')[0][1]
+                    scroll_id = msg.get('scroll_id')
+                elif config.log_type == LOG_TYPE_ADMIN:
+                    msg = resj.get('message')
+                    if 'scroll_id' in msg.get('metadata'):
+                        scroll_id = msg.get('metadata').get('scroll_id')
+
                 LOG.debug("scroll_id: %s" % scroll_id)
                 count = 0
-                for timestamp, response in six.iteritems(msg):
-                    try:
-                        if not timestamp.isdigit():
-                            LOG.debug("Ignored timestamp '%s': %s" % (timestamp, response))
-                            continue
-                        LOG.debug("flog is %s" % type(response['flog']).__name__)
-                        LOG.debug("Scanned timestamp: %s" % timestamp)
-                        gmttime = datetime.fromtimestamp(int(timestamp)/1000)
-                        if isinstance(response, dict) and 'flog' in response:
-                            out.write("%s\n" % ' '.join([gmttime.isoformat(), response['flog']]))
-                            line_count += 1
-                            LOG.debug("### flog ## %s" % response['flog'])
+
+                if config.log_type == LOG_TYPE_EVENT:
+                    for timestamp, response in six.iteritems(msg):
+                        try:
+                            if not timestamp.isdigit():
+                                LOG.debug("Ignored timestamp '%s': %s" % (timestamp, response))
+                                continue
+                            LOG.debug("flog is %s" % type(response['flog']).__name__)
+                            LOG.debug("Scanned timestamp: %s" % timestamp)
+                            gmttime = datetime.fromtimestamp(int(timestamp)/1000)
+                            if isinstance(response, dict) and 'flog' in response:
+                                out.write("%s\n" % ' '.join([gmttime.isoformat(), response['flog']]))
+                                line_count += 1
+                                LOG.debug("### flog ## %s" % response['flog'])
+                                count += 1
+                        except Exception:
+                            LOG.exception("Error parsing access log line")
+                elif config.log_type == LOG_TYPE_ADMIN:
+                    for item in msg.get('data'):
+                        try:
+                            gmttime = datetime.fromtimestamp(int(item.get('ts')/1000))
+                            out.write(u"%s\n" % ','.join(
+                                [
+                                    gmttime.isoformat(),
+                                    item['splunk_line']
+                                ]
+                            ))
                             count += 1
-                    except Exception:
-                        LOG.exception("error parsing response")
+                        except Exception as e:
+                            LOG.exception('Error parsing admin log line: %s' % e)   
 
             else:
                 LOG.error('Error: no data(message) in response.')
@@ -153,38 +184,39 @@ if __name__ == "__main__":
 
     LOG.debug("Python %s" % platform.python_version())
     LOG.info("PID: %s" % os.getpid())
+    LOG.info("Poll interval: %s seconds" % poll_interval_sec)
 
     if config.output is None:
         out = sys.stdout
     else:
         LOG.info("Output file: %s" % config.output)
-        LOG.info("Poll interval: %s seconds" % poll_interval_sec)
         out = open(config.output, 'w+')
 
     try:
         while True:
             # end time in milliseconds
             ets = int(time.mktime(time.localtime()) * 1000 - (collection_delay_minutes * 60 * 1000))
+            if not config.tail and config.end:
+                ets = config.end * 1000
             # start time in milliseconds
             sts = int(ets - (poll_interval_sec * 1000) - (collection_delay_minutes * 60 * 1000))
+            if not config.tail and config.start:
+                sts = config.start * 1000
 
-            LOG.debug("Fetching log[%s] from %s to %s..." % (config.log_type, sts, ets))
+            LOG.info("Fetching log[%s] from %s to %s..." % (config.log_type, sts, ets))
 
-            if config.log_type == "access":
+            if config.log_type in (LOG_TYPE_ADMIN, LOG_TYPE_EVENT):
                 # Use scroll paging
                 drpc_args = '{"sts":'+ str(sts) + ',"ets":'+ str(ets) + \
                             ',"metrics":"logs","es_fields":"flog","limit":"1000","sub_metrics":"scroll","source": "%s"}' % SOURCE
-                scroll_id = etl.get_logs(api_key, secret_key, drpc_args, out)
+                scroll_id = etl.get_logs(api_key, secret_key, drpc_args, config.log_type, out)
                 # Check for scroll_id to issue another request
                 while (scroll_id != None):
                     drpc_args = '{"sts":'+ str(sts) +',"ets":'+ str(ets) + \
                     ',"metrics":"logs","es_fields":"flog","limit":"1000","sub_metrics":"scroll","source":"' + SOURCE + '","scroll_id":"'+scroll_id+'"}'
-                    scroll_id = etl.get_logs(api_key, secret_key, drpc_args, out)
+                    scroll_id = etl.get_logs(api_key, secret_key, drpc_args, config.log_type, out)
 
                 out.flush()
-
-            elif config.type == "admin":
-                pass
             else:
                 raise Exception("Not supported log type: %s" % config.type)
 
@@ -195,6 +227,8 @@ if __name__ == "__main__":
                 time.sleep(poll_interval_sec)
     except KeyboardInterrupt as ki:
         LOG.info("Keyboard interupt")
+    except Exception as e:
+        LOG.exception("General exception")
     finally:
         if out is not None and out != sys.stdout:
             LOG.debug("Closing output file...")
