@@ -46,7 +46,7 @@ class EdgeGridConfig():
                                   choices=['access', 'admin'], help="Log line type")
         event_parser.add_argument('--start', '-s', type=int, help="Start datetime (EPOCH)")
         event_parser.add_argument('--end', '-e', type=int, help="End datetime (EPOCH)")
-        event_parser.add_argument('--output', '-o', help="Output file, default is stdout")
+        event_parser.add_argument('--output', '-o', help="Output file, default is stdout. Encoding is utf-8.")
         event_parser.add_argument('--tail', '-f', action='store_true', default=False, 
                                   help="""Do not stop when most recent log is reached, 
                                   but rather to wait for additional data to be appended to the input.""")

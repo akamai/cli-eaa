@@ -14,6 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Load Akamai Enteprise Application Access access logs
+# Original author: <androcho@akamai.com> based on Splunk app
+
 from __future__ import print_function
 import os
 import sys
@@ -26,6 +29,8 @@ import hashlib
 import platform
 from datetime import datetime
 import logging
+import signal
+from threading import Event
 import six
 
 from config import EdgeGridConfig
@@ -43,10 +48,11 @@ ACCESSLOG_API = "{}/api/{}/analytics/ops"
 LOG = logging.getLogger(__name__)
 
 datef = "%Y-%m-%d %H:%M"
-collection_delay_minutes = 5
+collection_delay_minutes = 1
 log_file = None
 poll_interval_sec = 15
 line_count = 0
+stop_event = Event()
 
 
 class Etl(object):
@@ -75,21 +81,22 @@ class Etl(object):
         self._headers = {'Authorization': 'Basic %s:%s' % (api_key, signature)}
         self._headers.update(self._content_type_json)
 
-    def get_logs(self, api_key, secret_key, drpc_args, logtype=LOG_TYPE_EVENT, output=sys.stdout):
+    
+    def get_api_url(self, logtype):
+        if logtype == LOG_TYPE_ADMIN:
+            return ADMINEVENT_API
+        else:
+            return ACCESSLOG_API
+
+    def get_logs(self, drpc_args, logtype=LOG_TYPE_EVENT, output=sys.stdout):
         global line_count
         scroll_id = None
-        if logtype == LOG_TYPE_ADMIN:
-            base_api_url = ADMINEVENT_API
-        else:
-            base_api_url = ACCESSLOG_API
         try:
             # Fetches the logs for given drpc args
-            api_url = base_api_url.format(
-                config.base_url,
-                self._api_ver
-            )
+            u = self.get_api_url(logtype)
+            api_url = u.format(config.base_url, self._api_ver)
 
-            self.ensure_signature_in_header(api_key=api_key, secret_key=secret_key)
+            self.ensure_signature_in_header(api_key=config.eaa_api_key, secret_key=config.eaa_api_secret)
             LOG.debug("request headers: %s"  % self._headers)
             resp = requests.post(
                 api_url,
@@ -129,9 +136,10 @@ class Etl(object):
                             LOG.debug("Scanned timestamp: %s" % timestamp)
                             gmttime = datetime.fromtimestamp(int(timestamp)/1000)
                             if isinstance(response, dict) and 'flog' in response:
-                                out.write("%s\n" % ' '.join([gmttime.isoformat(), response['flog']]))
-                                line_count += 1
+                                line = "%s\n" % ' '.join([gmttime.isoformat(), response['flog']])
+                                out.write(line.encode("utf8"))
                                 LOG.debug("### flog ## %s" % response['flog'])
+                                line_count += 1
                                 count += 1
                         except Exception:
                             LOG.exception("Error parsing access log line")
@@ -139,15 +147,12 @@ class Etl(object):
                     for item in msg.get('data'):
                         try:
                             gmttime = datetime.fromtimestamp(int(item.get('ts')/1000))
-                            out.write(u"%s\n" % ','.join(
-                                [
-                                    gmttime.isoformat(),
-                                    item['splunk_line']
-                                ]
-                            ))
+                            line = u"{},{}\n".format(gmttime.isoformat(), item.get('splunk_line'))
+                            out.write(line.encode("utf8"))
+                            line_count += 1
                             count += 1
                         except Exception as e:
-                            LOG.exception('Error parsing admin log line: %s' % e)   
+                            LOG.exception('Error parsing admin log line: %s, content: %s' % (e, item.get('splunk_line')))
 
             else:
                 LOG.error('Error: no data(message) in response.')
@@ -172,14 +177,29 @@ def log_level():
         return logging.ERROR
 
 
+def date_boundaries():
+    # end time in milliseconds
+    ets = int(time.mktime(time.localtime()) * 1000 - (collection_delay_minutes * 60 * 1000))
+    if not config.tail and config.end:
+        ets = config.end * 1000
+    # start time in milliseconds
+    sts = int(ets - (poll_interval_sec * 1000))
+    if not config.tail and config.start:
+        sts = config.start * 1000
+    return ets, sts
+
+
+def exit_gracefully(signum, frame):
+    LOG.info("Stop because SIGTERM")
+    stop_event.set()
+
+
 if __name__ == "__main__":
 
-    api_key = config.eaa_api_key
-    secret_key = config.eaa_api_secret
-
     logging.basicConfig(filename=log_file, level=log_level(),
-        format='%(asctime)s [%(levelname)s] %(message)s')
+        format='%(asctime)s [%(levelname)s] %(threadName)s %(message)s')
 
+    signal.signal(signal.SIGTERM, exit_gracefully)
     etl = Etl();
 
     LOG.debug("Python %s" % platform.python_version())
@@ -194,44 +214,37 @@ if __name__ == "__main__":
 
     try:
         while True:
-            # end time in milliseconds
-            ets = int(time.mktime(time.localtime()) * 1000 - (collection_delay_minutes * 60 * 1000))
-            if not config.tail and config.end:
-                ets = config.end * 1000
-            # start time in milliseconds
-            sts = int(ets - (poll_interval_sec * 1000) - (collection_delay_minutes * 60 * 1000))
-            if not config.tail and config.start:
-                sts = config.start * 1000
-
+            ets, sts = date_boundaries()
             LOG.info("Fetching log[%s] from %s to %s..." % (config.log_type, sts, ets))
-
             if config.log_type in (LOG_TYPE_ADMIN, LOG_TYPE_EVENT):
                 # Use scroll paging
                 drpc_args = '{"sts":'+ str(sts) + ',"ets":'+ str(ets) + \
                             ',"metrics":"logs","es_fields":"flog","limit":"1000","sub_metrics":"scroll","source": "%s"}' % SOURCE
-                scroll_id = etl.get_logs(api_key, secret_key, drpc_args, config.log_type, out)
+                scroll_id = etl.get_logs(drpc_args, config.log_type, out)
                 # Check for scroll_id to issue another request
                 while (scroll_id != None):
                     drpc_args = '{"sts":'+ str(sts) +',"ets":'+ str(ets) + \
                     ',"metrics":"logs","es_fields":"flog","limit":"1000","sub_metrics":"scroll","source":"' + SOURCE + '","scroll_id":"'+scroll_id+'"}'
-                    scroll_id = etl.get_logs(api_key, secret_key, drpc_args, config.log_type, out)
-
+                    scroll_id = etl.get_logs(drpc_args, config.log_type, out)
                 out.flush()
             else:
                 raise Exception("Not supported log type: %s" % config.type)
-
             if not config.tail:
                 break
             else:
                 LOG.debug("Now waiting %s seconds..." % poll_interval_sec)
-                time.sleep(poll_interval_sec)
+                #time.sleep(poll_interval_sec)
+                stop_event.wait(poll_interval_sec)
+                if stop_event.is_set():
+                    break
     except KeyboardInterrupt as ki:
-        LOG.info("Keyboard interupt")
+        LOG.info("Keyboard interrupt")
     except Exception as e:
         LOG.exception("General exception")
     finally:
         if out is not None and out != sys.stdout:
             LOG.debug("Closing output file...")
             out.close()
-
         LOG.info("%s log lines were fetched." % line_count)
+
+# end of file
