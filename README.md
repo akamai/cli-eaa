@@ -67,7 +67,7 @@ Pull user access logs, block till new logs are received.
 You can stop by pressing Control+C (Control+Break) or sending a signal SIG_INT or SIG_TERM to the process
 
 ```bash
-$ akamai eaa log access -tail
+$ akamai eaa log access --tail
 ```
 
 You may want a one time chunk of log for a period of time, let's say the last 6 hours:
@@ -79,12 +79,12 @@ $ akamai eaa log access -s $START
 
 Send the user access log to a file (utf-8 encoding is being used):
 ```bash
-$ akamai eaa log access -tail -o /tmp/eaa_access.log
+$ akamai eaa log access --tail -o /tmp/eaa_access.log
 ```
 
 Pull admin audit logs, block till new logs are received
 ```bash
-$ akamai eaa log admin -tail
+$ akamai eaa log admin --tail
 ```
 
 ## Troubleshooting
