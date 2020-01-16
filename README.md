@@ -1,4 +1,16 @@
-# Akamai CLI: Enterprise Application Access
+# Akamai CLI: Enterprise Application Access<!-- omit in toc -->
+
+## Table of contents<!-- omit in toc -->
+
+- [Introduction](#introduction)
+- [Feature highlight](#feature-highlight)
+- [Installation](#installation)
+  - [Configuration file](#configuration-file)
+  - [Upgrade](#upgrade)
+- [Fields documentation](#fields-documentation)
+- [Examples](#examples)
+  - [Pull EAA logs](#pull-eaa-logs)
+- [Troubleshooting](#troubleshooting)
 
 ## Introduction
 
