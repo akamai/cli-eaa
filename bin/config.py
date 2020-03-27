@@ -39,7 +39,7 @@ class EdgeGridConfig():
     def __init__(self, config_values, configuration, flags=None):
         parser = self.parser
 
-        subparsers = parser.add_subparsers(dest="command", help='EAA object to manipulate')
+        subparsers = parser.add_subparsers(dest='command', help='EAA object to manipulate')
 
         event_parser = subparsers.add_parser("log", help="Fetch last log lines")
         event_parser.add_argument('log_type', nargs='?', default="access", 
@@ -50,13 +50,24 @@ class EdgeGridConfig():
         event_parser.add_argument('--tail', '-f', action='store_true', default=False, 
                                   help="""Do not stop when most recent log is reached, 
                                   but rather to wait for additional data to be appended to the input.""")
+
+        search_parser = subparsers.add_parser('search', help='Search in EAA configurations')
+        search_parser.add_argument('pattern', nargs='?')
+
+        dir_parser = subparsers.add_parser('dir', help='Manage EAA directories')
+        dir_parser.add_argument('directory_id', help="EAA Directory ID")
+        dir_parser.add_argument('action', choices=['addgroup', 'delgroup'], help="Action on the directory")
+        dir_parser.add_argument('dn', help="Group Distinguished Name as string or @file for multiple DNs, eg. \"CN=Support,CN=Users,DC=CONTOSO,DC=NET\"")
     
+        subparsers.add_parser('version', help='Display CLI EAA module version')
+
         parser.add_argument('--verbose', '-v', default=False, action='count', help=' Verbose mode')
         parser.add_argument('--debug', '-d', default=False, action='count', help=' Debug mode (prints HTTP headers)')
         parser.add_argument('--edgerc', '-e', default='~/.edgerc', metavar='credentials_file', 
                             help=' Location of the credentials file (default is ~/.edgerc)')
         parser.add_argument('--section', '-c', default='default', metavar='credentials_file_section', action='store', 
                             help=' Credentials file Section\'s name to use')
+
 
         if flags:
             for argument in flags.keys():

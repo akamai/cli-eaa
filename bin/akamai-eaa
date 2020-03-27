@@ -31,9 +31,14 @@ from datetime import datetime
 import logging
 import signal
 from threading import Event
+import re
 import six
+import ldap
+import util
 
 from config import EdgeGridConfig
+
+__version__ = '0.1.5'
 
 # If all parameters are set already, use them.  Otherwise
 # use the config
@@ -45,6 +50,8 @@ LOG_TYPE_EVENT = "access"
 LOG_TYPE_ADMIN = "admin"
 ADMINEVENT_API = "{}/api/{}/adminevents-reports/ops/splunk-query"
 ACCESSLOG_API = "{}/api/{}/analytics/ops"
+APPS_API = "{}/api/{}/apps"
+DIRECTORIES_API = "{}/api/{}/directories"
 LOG = logging.getLogger(__name__)
 
 datef = "%Y-%m-%d %H:%M"
@@ -55,14 +62,125 @@ line_count = 0
 stop_event = Event()
 
 
-class Etl(object):
-    """ETL"""
+class BaseAPI(object):
 
     def __init__(self, api_version='v1'):
         self._api_ver = api_version
         self._content_type_json = {'content-type': 'application/json'}
         self._content_type_form = {'content-type': 'application/x-www-form-urlencoded'}
         self._headers = None
+
+    def get_signature(self, access_key_id, secret_access_key):
+        encoding = 'ascii'
+        msg = "%s:%s" % (access_key_id, secret_access_key)
+        signature = hmac.new(
+            key=secret_access_key.encode(encoding),
+            msg=msg.encode(encoding),
+            digestmod=hashlib.sha256).digest()
+        # Base64 encode the signature
+        signature = base64.b64encode(signature)
+        LOG.debug("Signature: %s" % signature.decode(encoding))
+        return signature.decode(encoding)
+
+    def ensure_signature_in_header(self, api_key, secret_key):
+        signature = self.get_signature(access_key_id=api_key, secret_access_key=secret_key)
+        self._headers = {'Authorization': 'Basic %s:%s' % (api_key, signature)}
+        self._headers.update(self._content_type_json)
+
+
+class SearchAPI(BaseAPI):
+    def search_app(self, s):
+        api_url = APPS_API.format(config.base_url, self._api_ver)
+        api_url += '?expand_sdk=true'
+        self.ensure_signature_in_header(api_key=config.eaa_api_key, secret_key=config.eaa_api_secret)
+        LOG.debug("Request headers: %s"  % self._headers)
+        # kwargs = {'limit': 100, 'offset': 0}
+        resp = requests.get(
+            api_url + '?expand_sdk=true&limit=100&offset=0',
+            headers=self._headers,
+            allow_redirects=False
+        )
+        # print(json.dumps(resp.json()))
+
+        if resp.status_code != 200:
+            raise Exception('Invalid response %s from %s' % (resp.status_code, api_url))
+
+        data = resp.json()
+        app_found = 0
+        if data.get("meta"):
+            meta = data.get("meta")
+            app_count = data.get("meta").get("total_count")
+
+            for a in resp.json().get('objects', []):
+                if not config.pattern or (config.pattern and re.match(config.pattern, a.get('name'))):
+                    print('%s,%s,%s,%s' % (a.get('name'), a.get('host'), a.get('cname'), a.get('app_status')))
+                    app_found += 1
+            if app_found != app_count:
+                print("Found %s app(s), scanned %s app(s)" % (app_found, app_count))
+            else:
+                print("%s app(s)" % app_count)
+            # nLoops = (app_count / 100) + 1
+            # for i in range(0, nLoops):
+            #     kwargs = {}
+            #     kwargs['limit'] = 100
+            #     kwargs['offset'] = i * 100
+            #     response = HttpExecutor.get_instance().request(method='GET', url_suffix=url + "?expand_sdk=true",
+            #                                                     **kwargs)
+            #     apps1 = handle_response(response=response, resource_name='apps')
+            #     apps = apps + apps1
+
+class DirectoryAPI(BaseAPI):
+
+    def __init__(self, directory_id):
+        super(DirectoryAPI, self).__init__()
+        self._directory_id = directory_id
+
+    def delgroup(self, dn):
+        pass
+
+    def addgroup(self, dn):
+        api_url = DIRECTORIES_API.format(config.base_url, self._api_ver) + "/" + self._directory_id + "/groups"
+        # api_url += '?expand_sdk=true'
+        self.ensure_signature_in_header(api_key=config.eaa_api_key, secret_key=config.eaa_api_secret)
+
+        for scanned_dn in util.argument_tolist((dn,)):
+            if ldap.dn.is_dn(scanned_dn):
+                parsed_dn = ldap.dn.str2dn(scanned_dn)
+                group = parsed_dn[0][0][1]
+                LOG.debug("Adding group %s" % (group))
+
+                LOG.debug("Request headers: %s"  % self._headers)
+                if action == "add":
+                    resp = requests.post(
+                        api_url,
+                        headers = self._headers,
+                        allow_redirects = False,
+                        json = {"name": group, "dn": scanned_dn}
+                    )
+                elif action == "del":
+                    resp = requests.delete(
+                        api_url,
+                        headers = self._headers,
+                        allow_redirects = False,
+                        json = {"name": group, "dn": scanned_dn}
+                    )
+
+                if resp.status_code != 200:
+                    LOG.error(resp.status_code)
+            else:
+                LOG.warn("Invalid DN: %s" % scanned_dn)
+
+
+
+class Etl(object):
+    """ETL"""
+
+    def __init__(self, out, api_version='v1'):
+        self._api_ver = api_version
+        self._content_type_json = {'content-type': 'application/json'}
+        self._content_type_form = {'content-type': 'application/x-www-form-urlencoded'}
+        self._headers = None
+        self._output = out
 
     def get_signature(self, access_key_id, secret_access_key):
         encoding = 'ascii'
@@ -137,7 +255,7 @@ class Etl(object):
                             local_time = datetime.fromtimestamp(int(timestamp)/1000)
                             if isinstance(response, dict) and 'flog' in response:
                                 line = "%s\n" % ' '.join([local_time.isoformat(), response['flog']])
-                                out.write(line.encode("utf8"))
+                                self._output.write(line.encode("utf8"))
                                 LOG.debug("### flog ## %s" % response['flog'])
                                 line_count += 1
                                 count += 1
@@ -194,57 +312,77 @@ def exit_gracefully(signum, frame):
     stop_event.set()
 
 
+def fetch_logs():
+        signal.signal(signal.SIGTERM, exit_gracefully)
+        signal.signal(signal.SIGINT, exit_gracefully)
+
+        LOG.info("PID: %s" % os.getpid())
+        LOG.info("Poll interval: %s seconds" % poll_interval_sec)
+
+        if config.output is None:
+            out = sys.stdout
+        else:
+            LOG.info("Output file: %s" % config.output)
+            out = open(config.output, 'w+')
+
+        etl = Etl(out);
+
+        try:
+            while True:
+                ets, sts = date_boundaries()
+                s = time.time()
+                LOG.info("Fetching log[%s] from %s to %s..." % (config.log_type, sts, ets))
+                if config.log_type in (LOG_TYPE_ADMIN, LOG_TYPE_EVENT):
+                    # Use scroll paging
+                    drpc_args = '{"sts":'+ str(sts) + ',"ets":'+ str(ets) + \
+                                ',"metrics":"logs","es_fields":"flog","limit":"1000","sub_metrics":"scroll","source": "%s"}' % SOURCE
+                    scroll_id = etl.get_logs(drpc_args, config.log_type, out)
+                    # Check for scroll_id to issue another request
+                    while (scroll_id != None):
+                        drpc_args = '{"sts":'+ str(sts) +',"ets":'+ str(ets) + \
+                        ',"metrics":"logs","es_fields":"flog","limit":"1000","sub_metrics":"scroll","source":"' + SOURCE + '","scroll_id":"'+scroll_id+'"}'
+                        scroll_id = etl.get_logs(drpc_args, config.log_type, out)
+                    out.flush()
+                else:
+                    raise Exception("Not supported log type: %s" % config.type)
+                if not config.tail:
+                    break
+                else:
+                    elapsed = time.time() - s
+                    LOG.debug("Now waiting %s seconds..." % (poll_interval_sec - elapsed))
+                    stop_event.wait(poll_interval_sec - elapsed)
+                    if stop_event.is_set():
+                        break
+        except Exception as e:
+            LOG.exception("General exception")
+        finally:
+            if out is not None and out != sys.stdout:
+                LOG.debug("Closing output file...")
+                out.close()
+            LOG.info("%s log lines were fetched." % line_count)
+
+
 if __name__ == "__main__":
 
     logging.basicConfig(filename=log_file, level=log_level(),
         format='%(asctime)s [%(levelname)s] %(threadName)s %(message)s')
 
-    signal.signal(signal.SIGTERM, exit_gracefully)
-    signal.signal(signal.SIGINT, exit_gracefully)
-    etl = Etl();
-
     LOG.debug("Python %s" % platform.python_version())
-    LOG.info("PID: %s" % os.getpid())
-    LOG.info("Poll interval: %s seconds" % poll_interval_sec)
 
-    if config.output is None:
-        out = sys.stdout
-    else:
-        LOG.info("Output file: %s" % config.output)
-        out = open(config.output, 'w+')
-
-    try:
-        while True:
-            ets, sts = date_boundaries()
-            s = time.time()
-            LOG.info("Fetching log[%s] from %s to %s..." % (config.log_type, sts, ets))
-            if config.log_type in (LOG_TYPE_ADMIN, LOG_TYPE_EVENT):
-                # Use scroll paging
-                drpc_args = '{"sts":'+ str(sts) + ',"ets":'+ str(ets) + \
-                            ',"metrics":"logs","es_fields":"flog","limit":"1000","sub_metrics":"scroll","source": "%s"}' % SOURCE
-                scroll_id = etl.get_logs(drpc_args, config.log_type, out)
-                # Check for scroll_id to issue another request
-                while (scroll_id != None):
-                    drpc_args = '{"sts":'+ str(sts) +',"ets":'+ str(ets) + \
-                    ',"metrics":"logs","es_fields":"flog","limit":"1000","sub_metrics":"scroll","source":"' + SOURCE + '","scroll_id":"'+scroll_id+'"}'
-                    scroll_id = etl.get_logs(drpc_args, config.log_type, out)
-                out.flush()
-            else:
-                raise Exception("Not supported log type: %s" % config.type)
-            if not config.tail:
-                break
-            else:
-                elapsed = time.time() - s
-                LOG.debug("Now waiting %s seconds..." % (poll_interval_sec - elapsed))
-                stop_event.wait(poll_interval_sec - elapsed)
-                if stop_event.is_set():
-                    break
-    except Exception as e:
-        LOG.exception("General exception")
-    finally:
-        if out is not None and out != sys.stdout:
-            LOG.debug("Closing output file...")
-            out.close()
-        LOG.info("%s log lines were fetched." % line_count)
-
+    if config.command == "version":
+        print(__version__)
+    elif config.command == "log":
+        fetch_logs()
+    elif config.command == "search":
+        # print('Search for %s...' % config.pattern)
+        s = SearchAPI()
+        s.search_app(config.pattern)
+    elif config.command == "dir":
+        d = DirectoryAPI(config.directory_id)
+        if config.action == "addgroup":
+            d.addgroup(config.dn)
+        elif config.action == "delgroup":
+            d.addgroup(config.dn)
+        else:
+            raise Exception("Unsupported directory action: %s" % config.action)
 # end of file
