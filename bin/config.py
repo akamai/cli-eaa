@@ -42,7 +42,7 @@ class EdgeGridConfig():
         subparsers = parser.add_subparsers(dest='command', help='EAA object to manipulate')
 
         event_parser = subparsers.add_parser("log", help="Fetch last log lines")
-        event_parser.add_argument('log_type', nargs='?', default="access", 
+        event_parser.add_argument('log_type', nargs='?', default="access",
                                   choices=['access', 'admin'], help="Log line type")
         event_parser.add_argument('--start', '-s', type=int, help="Start datetime (EPOCH)")
         event_parser.add_argument('--end', '-e', type=int, help="End datetime (EPOCH)")
@@ -55,19 +55,31 @@ class EdgeGridConfig():
         search_parser.add_argument('pattern', nargs='?')
 
         dir_parser = subparsers.add_parser('dir', help='Manage EAA directories')
-        dir_parser.add_argument('directory_id', help="EAA Directory ID")
-        dir_parser.add_argument('action', choices=['addgroup', 'delgroup'], help="Action on the directory")
-        dir_parser.add_argument('dn', help="Group Distinguished Name as string or @file for multiple DNs, eg. \"CN=Support,CN=Users,DC=CONTOSO,DC=NET\"")
-    
+        subsub = dir_parser.add_subparsers(dest="action", help='Directory action')
+        subsub.add_parser("list", help="List EAA directories")
+        addgrp_parser = subsub.add_parser("addgroup", help="Add Group")
+        addgrp_parser.add_argument('directory_id', help="EAA Directory ID")
+        addgrp_parser.add_argument(
+            'group',
+            help="Distinguished Name (when existing "
+                 "group in directory as string or @file "
+                 "for multiple DNs, eg. \"CN=Support,"
+                 "CN=Users,DC=CONTOSO,DC=NET\"")
+
+        addovlgrp_parser = subsub.add_parser(
+            "addovlgroup",
+            help="Add Overlay Group")
+        addovlgrp_parser.add_argument('directory_id', help="EAA Directory ID")
+        addovlgrp_parser.add_argument('group', help="Group Name")
+
         subparsers.add_parser('version', help='Display CLI EAA module version')
 
         parser.add_argument('--verbose', '-v', default=False, action='count', help=' Verbose mode')
         parser.add_argument('--debug', '-d', default=False, action='count', help=' Debug mode (prints HTTP headers)')
         parser.add_argument('--edgerc', '-e', default='~/.edgerc', metavar='credentials_file', 
                             help=' Location of the credentials file (default is ~/.edgerc)')
-        parser.add_argument('--section', '-c', default='default', metavar='credentials_file_section', action='store', 
+        parser.add_argument('--section', '-c', default='default', metavar='credentials_file_section', action='store',
                             help=' Credentials file Section\'s name to use')
-
 
         if flags:
             for argument in flags.keys():

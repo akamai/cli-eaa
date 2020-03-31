@@ -38,7 +38,7 @@ import util
 
 from config import EdgeGridConfig
 
-__version__ = '0.1.5'
+__version__ = '0.1.2'
 
 # If all parameters are set already, use them.  Otherwise
 # use the config
@@ -67,7 +67,8 @@ class BaseAPI(object):
     def __init__(self, api_version='v1'):
         self._api_ver = api_version
         self._content_type_json = {'content-type': 'application/json'}
-        self._content_type_form = {'content-type': 'application/x-www-form-urlencoded'}
+        self._content_type_form = \
+            {'content-type': 'application/x-www-form-urlencoded'}
         self._headers = None
 
     def get_signature(self, access_key_id, secret_access_key):
@@ -83,7 +84,8 @@ class BaseAPI(object):
         return signature.decode(encoding)
 
     def ensure_signature_in_header(self, api_key, secret_key):
-        signature = self.get_signature(access_key_id=api_key, secret_access_key=secret_key)
+        signature = self.get_signature(access_key_id=api_key,
+                                       secret_access_key=secret_key)
         self._headers = {'Authorization': 'Basic %s:%s' % (api_key, signature)}
         self._headers.update(self._content_type_json)
 
@@ -92,8 +94,9 @@ class SearchAPI(BaseAPI):
     def search_app(self, s):
         api_url = APPS_API.format(config.base_url, self._api_ver)
         api_url += '?expand_sdk=true'
-        self.ensure_signature_in_header(api_key=config.eaa_api_key, secret_key=config.eaa_api_secret)
-        LOG.debug("Request headers: %s"  % self._headers)
+        self.ensure_signature_in_header(api_key=config.eaa_api_key,
+                                        secret_key=config.eaa_api_secret)
+        LOG.debug("Request headers: %s" % self._headers)
         # kwargs = {'limit': 100, 'offset': 0}
         resp = requests.get(
             api_url + '?expand_sdk=true&limit=100&offset=0',
@@ -103,17 +106,24 @@ class SearchAPI(BaseAPI):
         # print(json.dumps(resp.json()))
 
         if resp.status_code != 200:
-            raise Exception('Invalid response %s from %s' % (resp.status_code, api_url))
+            raise Exception('Invalid response %s from %s' %
+                            (resp.status_code, api_url))
 
         data = resp.json()
         app_found = 0
         if data.get("meta"):
-            meta = data.get("meta")
             app_count = data.get("meta").get("total_count")
 
             for a in resp.json().get('objects', []):
-                if not config.pattern or (config.pattern and re.match(config.pattern, a.get('name'))):
-                    print('%s,%s,%s,%s' % (a.get('name'), a.get('host'), a.get('cname'), a.get('app_status')))
+                if not config.pattern or (
+                    config.pattern and
+                        re.match(config.pattern, a.get('name'))):
+                    print('app://%s,%s,%s,%s,%s' % (
+                        a.get('uuid_url'),
+                        a.get('name'),
+                        a.get('host'),
+                        a.get('cname'),
+                        a.get('app_status')))
                     app_found += 1
             if app_found != app_count:
                 print("Found %s app(s), scanned %s app(s)" % (app_found, app_count))
@@ -129,47 +139,66 @@ class SearchAPI(BaseAPI):
             #     apps1 = handle_response(response=response, resource_name='apps')
             #     apps = apps + apps1
 
+
 class DirectoryAPI(BaseAPI):
 
     def __init__(self, directory_id):
         super(DirectoryAPI, self).__init__()
         self._directory_id = directory_id
 
-    def delgroup(self, dn):
-        pass
+    def list_directories(self):
+        api_url = DIRECTORIES_API.format(config.base_url, self._api_ver) + "?limit=0"
+        self.ensure_signature_in_header(api_key=config.eaa_api_key, secret_key=config.eaa_api_secret)
+        resp = requests.get(
+            api_url,
+            headers=self._headers,
+            allow_redirects=False,
+        )
+        if resp.status_code != 200:
+            LOG.error("Error retrieve directories (%s)" % resp.status_code)
+        resj = resp.json()
+        for d in resj.get("objects"):
+            print("dir://{dirid},{name},{user_count}".format(
+                dirid=d.get("uuid_url"), 
+                name=d.get("name"), 
+                user_count=d.get("user_count"))
+            )
+
+    def delgroup(self, group_uuid):
+        raise NotImplemented("Group deletion is not implemented")
+
+    def addoverlaygroup(self, groupname):
+        api_url = DIRECTORIES_API.format(config.base_url, self._api_ver) + \
+            "/" + self._directory_id + "/groups"
+        self.ensure_signature_in_header(api_key=config.eaa_api_key, secret_key=config.eaa_api_secret)
+        resp = requests.post(
+            api_url,
+            headers=self._headers,
+            allow_redirects=False,
+            json={"status": 1, "group_type": 4, "name": groupname}
+        )
+        if resp.status_code != 200:
+            LOG.error("Error adding group to ")
 
     def addgroup(self, dn):
         api_url = DIRECTORIES_API.format(config.base_url, self._api_ver) + "/" + self._directory_id + "/groups"
-        # api_url += '?expand_sdk=true'
         self.ensure_signature_in_header(api_key=config.eaa_api_key, secret_key=config.eaa_api_secret)
-
         for scanned_dn in util.argument_tolist((dn,)):
             if ldap.dn.is_dn(scanned_dn):
                 parsed_dn = ldap.dn.str2dn(scanned_dn)
                 group = parsed_dn[0][0][1]
                 LOG.debug("Adding group %s" % (group))
-
-                LOG.debug("Request headers: %s"  % self._headers)
-                if action == "add":
-                    resp = requests.post(
-                        api_url,
-                        headers = self._headers,
-                        allow_redirects = False,
-                        json = {"name": group, "dn": scanned_dn}
-                    )
-                elif action == "del":
-                    resp = requests.delete(
-                        api_url,
-                        headers = self._headers,
-                        allow_redirects = False,
-                        json = {"name": group, "dn": scanned_dn}
-                    )
-
+                LOG.debug("Request headers: %s" % self._headers)
+                resp = requests.post(
+                    api_url,
+                    headers=self._headers,
+                    allow_redirects=False,
+                    json={"name": group, "dn": scanned_dn}
+                )
                 if resp.status_code != 200:
                     LOG.error(resp.status_code)
             else:
                 LOG.warn("Invalid DN: %s" % scanned_dn)
-
 
 
 class Etl(object):
@@ -199,7 +228,6 @@ class Etl(object):
         self._headers = {'Authorization': 'Basic %s:%s' % (api_key, signature)}
         self._headers.update(self._content_type_json)
 
-    
     def get_api_url(self, logtype):
         if logtype == LOG_TYPE_ADMIN:
             return ADMINEVENT_API
@@ -215,7 +243,7 @@ class Etl(object):
             api_url = u.format(config.base_url, self._api_ver)
 
             self.ensure_signature_in_header(api_key=config.eaa_api_key, secret_key=config.eaa_api_secret)
-            LOG.debug("request headers: %s"  % self._headers)
+            LOG.debug("request headers: %s" % self._headers)
             resp = requests.post(
                 api_url,
                 data=drpc_args,
@@ -266,7 +294,7 @@ class Etl(object):
                         try:
                             local_time = datetime.fromtimestamp(int(item.get('ts')/1000))
                             line = u"{},{}\n".format(local_time.isoformat(), item.get('splunk_line'))
-                            out.write(line.encode("utf8"))
+                            self._output.write(line.encode("utf8"))
                             line_count += 1
                             count += 1
                         except Exception as e:
@@ -313,53 +341,53 @@ def exit_gracefully(signum, frame):
 
 
 def fetch_logs():
-        signal.signal(signal.SIGTERM, exit_gracefully)
-        signal.signal(signal.SIGINT, exit_gracefully)
+    signal.signal(signal.SIGTERM, exit_gracefully)
+    signal.signal(signal.SIGINT, exit_gracefully)
 
-        LOG.info("PID: %s" % os.getpid())
-        LOG.info("Poll interval: %s seconds" % poll_interval_sec)
+    LOG.info("PID: %s" % os.getpid())
+    LOG.info("Poll interval: %s seconds" % poll_interval_sec)
 
-        if config.output is None:
-            out = sys.stdout
-        else:
-            LOG.info("Output file: %s" % config.output)
-            out = open(config.output, 'w+')
+    if config.output is None:
+        out = sys.stdout
+    else:
+        LOG.info("Output file: %s" % config.output)
+        out = open(config.output, 'w+')
 
-        etl = Etl(out);
+    etl = Etl(out)
 
-        try:
-            while True:
-                ets, sts = date_boundaries()
-                s = time.time()
-                LOG.info("Fetching log[%s] from %s to %s..." % (config.log_type, sts, ets))
-                if config.log_type in (LOG_TYPE_ADMIN, LOG_TYPE_EVENT):
-                    # Use scroll paging
-                    drpc_args = '{"sts":'+ str(sts) + ',"ets":'+ str(ets) + \
-                                ',"metrics":"logs","es_fields":"flog","limit":"1000","sub_metrics":"scroll","source": "%s"}' % SOURCE
+    try:
+        while True:
+            ets, sts = date_boundaries()
+            s = time.time()
+            LOG.info("Fetching log[%s] from %s to %s..." % (config.log_type, sts, ets))
+            if config.log_type in (LOG_TYPE_ADMIN, LOG_TYPE_EVENT):
+                # Use scroll paging
+                drpc_args = '{"sts":'+ str(sts) + ',"ets":'+ str(ets) + \
+                            ',"metrics":"logs","es_fields":"flog","limit":"1000","sub_metrics":"scroll","source": "%s"}' % SOURCE
+                scroll_id = etl.get_logs(drpc_args, config.log_type, out)
+                # Check for scroll_id to issue another request
+                while (scroll_id != None):
+                    drpc_args = '{"sts":'+ str(sts) +',"ets":'+ str(ets) + \
+                    ',"metrics":"logs","es_fields":"flog","limit":"1000","sub_metrics":"scroll","source":"' + SOURCE + '","scroll_id":"'+scroll_id+'"}'
                     scroll_id = etl.get_logs(drpc_args, config.log_type, out)
-                    # Check for scroll_id to issue another request
-                    while (scroll_id != None):
-                        drpc_args = '{"sts":'+ str(sts) +',"ets":'+ str(ets) + \
-                        ',"metrics":"logs","es_fields":"flog","limit":"1000","sub_metrics":"scroll","source":"' + SOURCE + '","scroll_id":"'+scroll_id+'"}'
-                        scroll_id = etl.get_logs(drpc_args, config.log_type, out)
-                    out.flush()
-                else:
-                    raise Exception("Not supported log type: %s" % config.type)
-                if not config.tail:
+                out.flush()
+            else:
+                raise Exception("Not supported log type: %s" % config.type)
+            if not config.tail:
+                break
+            else:
+                elapsed = time.time() - s
+                LOG.debug("Now waiting %s seconds..." % (poll_interval_sec - elapsed))
+                stop_event.wait(poll_interval_sec - elapsed)
+                if stop_event.is_set():
                     break
-                else:
-                    elapsed = time.time() - s
-                    LOG.debug("Now waiting %s seconds..." % (poll_interval_sec - elapsed))
-                    stop_event.wait(poll_interval_sec - elapsed)
-                    if stop_event.is_set():
-                        break
-        except Exception as e:
-            LOG.exception("General exception")
-        finally:
-            if out is not None and out != sys.stdout:
-                LOG.debug("Closing output file...")
-                out.close()
-            LOG.info("%s log lines were fetched." % line_count)
+    except Exception:
+        LOG.exception("General exception")
+    finally:
+        if out is not None and out != sys.stdout:
+            LOG.debug("Closing output file...")
+            out.close()
+        LOG.info("%s log lines were fetched." % line_count)
 
 
 if __name__ == "__main__":
@@ -378,11 +406,16 @@ if __name__ == "__main__":
         s = SearchAPI()
         s.search_app(config.pattern)
     elif config.command == "dir":
-        d = DirectoryAPI(config.directory_id)
-        if config.action == "addgroup":
-            d.addgroup(config.dn)
-        elif config.action == "delgroup":
-            d.addgroup(config.dn)
+        if config.action is None or config.action == "list":
+            d = DirectoryAPI(None)
+            d.list_directories()
         else:
-            raise Exception("Unsupported directory action: %s" % config.action)
+            d = DirectoryAPI(config.directory_id)
+            if config.action == "addgroup":
+                d.addgroup(config.dn)
+            elif config.action == "addovlgroup":
+                d.addoverlaygroup(config.group)
+            else:
+                raise Exception("Unsupported directory action: %s" % config.action)
+
 # end of file
