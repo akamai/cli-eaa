@@ -4,6 +4,5 @@ __pycache__
 .edgerc
 /venv*/
 *.pyc
-/test/
 .DS_Store
 .vscode
