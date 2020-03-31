@@ -59,8 +59,9 @@ class EdgeGridConfig():
         subsub.add_parser("list", help="List EAA directories")
         addgrp_parser = subsub.add_parser("addgroup", help="Add Group")
         addgrp_parser.add_argument('directory_id', help="EAA Directory ID")
+        addgrp_parser.add_argument('group', help="Group Name")
         addgrp_parser.add_argument(
-            'group',
+            'dn',
             help="Distinguished Name (when existing "
                  "group in directory as string or @file "
                  "for multiple DNs, eg. \"CN=Support,"

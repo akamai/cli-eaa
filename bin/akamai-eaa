@@ -33,8 +33,6 @@ import signal
 from threading import Event
 import re
 import six
-import ldap
-import util
 
 from config import EdgeGridConfig
 
@@ -180,25 +178,19 @@ class DirectoryAPI(BaseAPI):
         if resp.status_code != 200:
             LOG.error("Error adding group to ")
 
-    def addgroup(self, dn):
+    def addgroup(self, group, dn):
         api_url = DIRECTORIES_API.format(config.base_url, self._api_ver) + "/" + self._directory_id + "/groups"
         self.ensure_signature_in_header(api_key=config.eaa_api_key, secret_key=config.eaa_api_secret)
-        for scanned_dn in util.argument_tolist((dn,)):
-            if ldap.dn.is_dn(scanned_dn):
-                parsed_dn = ldap.dn.str2dn(scanned_dn)
-                group = parsed_dn[0][0][1]
-                LOG.debug("Adding group %s" % (group))
-                LOG.debug("Request headers: %s" % self._headers)
-                resp = requests.post(
-                    api_url,
-                    headers=self._headers,
-                    allow_redirects=False,
-                    json={"name": group, "dn": scanned_dn}
-                )
-                if resp.status_code != 200:
-                    LOG.error(resp.status_code)
-            else:
-                LOG.warn("Invalid DN: %s" % scanned_dn)
+        LOG.debug("Adding group %s (DN: %s)" % (group, dn))
+        LOG.debug("Request headers: %s" % self._headers)
+        resp = requests.post(
+            api_url,
+            headers=self._headers,
+            allow_redirects=False,
+            json={"name": group, "dn": dn}
+        )
+        if resp.status_code != 200:
+            LOG.error(resp.status_code)
 
 
 class Etl(object):
@@ -412,7 +404,7 @@ if __name__ == "__main__":
         else:
             d = DirectoryAPI(config.directory_id)
             if config.action == "addgroup":
-                d.addgroup(config.dn)
+                d.addgroup(config.group, config.dn)
             elif config.action == "addovlgroup":
                 d.addoverlaygroup(config.group)
             else:
