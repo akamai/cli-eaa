@@ -1,5 +1,5 @@
 # Python edgegrid module - CONFIG for EAA CLI module
-""" 
+"""
  Copyright 2020 Akamai Technologies, Inc. All Rights Reserved.
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -7,7 +7,7 @@
  You may obtain a copy of the License at
 
     http://www.apache.org/licenses/LICENSE-2.0
- 
+
  Unless required by applicable law or agreed to in writing, software
  distributed under the License is distributed on an "AS IS" BASIS,
  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -56,7 +56,14 @@ class EdgeGridConfig():
 
         dir_parser = subparsers.add_parser('dir', help='Manage EAA directories')
         subsub = dir_parser.add_subparsers(dest="action", help='Directory action')
-        subsub.add_parser("list", help="List EAA directories")
+#        subsub.add_parser("list", help="List EAA directories")
+
+        listgrp_parser = subsub.add_parser("list", help="List all groups existing in an EAA directory")
+        listgrp_parser.add_argument('directory_id', help="EAA Directory ID", nargs='?')
+        listgrp_parser.add_argument('--groups', '-g', action='store_true', default=True, help="Display users")
+        listgrp_parser.add_argument('--users', '-u', action='store_true', default=False, help="Display groups")
+        listgrp_parser.add_argument('search_pattern', help="Search pattern")
+
         addgrp_parser = subsub.add_parser("addgroup", help="Add Group")
         addgrp_parser.add_argument('directory_id', help="EAA Directory ID")
         addgrp_parser.add_argument(
@@ -71,6 +78,13 @@ class EdgeGridConfig():
             help="Add Overlay Group")
         addovlgrp_parser.add_argument('directory_id', help="EAA Directory ID")
         addovlgrp_parser.add_argument('group', help="Group Name")
+
+        # New: akamai eaa app xyz add_dnsexception www.abcd.efg
+        #      akamai eaa app xyz del_dnsexception www.abcd.efg
+        app_parser = subparsers.add_parser('app', help='Manage EAA applications')
+        app_parser.add_argument(dest='application_id', help="Application ID")
+        app_parser.add_argument(dest="action", choices=['deploy', 'add_dnsexception', 'del_dnsexception', 'save'], 
+                                help='Application action')
 
         subparsers.add_parser('version', help='Display CLI EAA module version')
 
@@ -95,8 +109,8 @@ class EdgeGridConfig():
 
         try:
             args = parser.parse_args()
-        except:
-            sys.exit()
+        except Exception:
+            sys.exit(1)
 
         arguments = vars(args)
 
@@ -136,3 +150,5 @@ class EdgeGridConfig():
 
     def create_base_url(self):
         self.base_url = "https://%s" % self.eaa_api_host
+
+# end of file

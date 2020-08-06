@@ -31,14 +31,18 @@ from datetime import datetime
 import logging
 import signal
 from threading import Event
-import re
+import util
+import fnmatch
+from urllib.parse import urljoin
+
+# 3rd party
 import six
 import ldap
-import util
+from akamai.edgegrid import EdgeGridAuth, EdgeRc
 
 from config import EdgeGridConfig
 
-__version__ = '0.1.2'
+__version__ = '0.1.5'
 
 # If all parameters are set already, use them.  Otherwise
 # use the config
@@ -52,6 +56,7 @@ ADMINEVENT_API = "{}/api/{}/adminevents-reports/ops/splunk-query"
 ACCESSLOG_API = "{}/api/{}/analytics/ops"
 APPS_API = "{}/api/{}/apps"
 DIRECTORIES_API = "{}/api/{}/directories"
+LOG_FMT = '%(asctime)s [%(levelname)s] %(threadName)s %(message)s'
 LOG = logging.getLogger(__name__)
 
 datef = "%Y-%m-%d %H:%M"
@@ -62,14 +67,46 @@ line_count = 0
 stop_event = Event()
 
 
+class EAAInvalidMoniker(Exception):
+    pass
+
+
+class EAAItem(object):
+    """
+    Representation of an EAA object.
+    """
+    SEP = '://'
+
+    def __init__(self, obj_url):
+        if not isinstance(obj_url, six.string_types):
+            raise TypeError('obj_url must be a string')
+        if '://' not in obj_url:
+            raise EAAInvalidMoniker('Invalid EAA Object URL %s' % obj_url)
+        scanned_type, scanned_uuid = obj_url.split(EAAItem.SEP)
+        self.objtype = scanned_type
+        self.uuid = scanned_uuid
+
+    def __repr__(self):
+        return self.objtype + EAAItem.SEP + self.uuid
+
+
 class BaseAPI(object):
 
-    def __init__(self, api_version='v1'):
-        self._api_ver = api_version
-        self._content_type_json = {'content-type': 'application/json'}
-        self._content_type_form = \
-            {'content-type': 'application/x-www-form-urlencoded'}
-        self._headers = None
+    def __init__(self, api_version='v1', config=None):
+        self._config = config
+        if api_version == "v1":  # Prior to {OPEN} API
+            self._api_ver = api_version
+            self._content_type_json = {'content-type': 'application/json'}
+            self._content_type_form = \
+                {'content-type': 'application/x-www-form-urlencoded'}
+            self._headers = None
+        elif api_version == 'crux':  # {OPEN} API
+            # TODO handle ambiguity when multiple contract ID are in use
+            edgerc = EdgeRc(config.edgerc)
+            section = config.section
+            self._baseurl = 'https://%s' % edgerc.get(section, 'host')
+            self._session = requests.Session()
+            self._session.auth = EdgeGridAuth.from_edgerc(edgerc, section)
 
     def get_signature(self, access_key_id, secret_access_key):
         encoding = 'ascii'
@@ -88,6 +125,19 @@ class BaseAPI(object):
                                        secret_access_key=secret_key)
         self._headers = {'Authorization': 'Basic %s:%s' % (api_key, signature)}
         self._headers.update(self._content_type_json)
+
+    def get(self, url_path):
+        """
+        Send a GET reques to the API.
+        """
+        response = self._session.get(urljoin(self._baseurl, url_path))
+        logging.info("BaseAPI: GET response is HTTP %s" % response.status_code)
+        return response
+
+    def post(self, url_path):
+        response = self._session.post(urljoin(self._baseurl, url_path))
+        logging.info("BaseAPI: POST response is HTTP %s" % response.status_code)
+        return response
 
 
 class SearchAPI(BaseAPI):
@@ -116,8 +166,12 @@ class SearchAPI(BaseAPI):
 
             for a in resp.json().get('objects', []):
                 if not config.pattern or (
-                    config.pattern and
-                        re.match(config.pattern, a.get('name'))):
+                    config.pattern and (
+                        fnmatch.fnmatch(a.get('name'), "*%s*" % config.pattern) or
+                        fnmatch.fnmatch(a.get('host'), "*%s*" % config.pattern) or
+                        fnmatch.fnmatch(a.get('cname'), "*%s*" % config.pattern)
+                    )
+                ):
                     print('app://%s,%s,%s,%s,%s' % (
                         a.get('uuid_url'),
                         a.get('name'),
@@ -144,25 +198,52 @@ class DirectoryAPI(BaseAPI):
 
     def __init__(self, directory_id):
         super(DirectoryAPI, self).__init__()
-        self._directory_id = directory_id
+        self._directory = EAAItem(directory_id)
+        self._directory_id = self._directory.uuid
 
-    def list_directories(self):
-        api_url = DIRECTORIES_API.format(config.base_url, self._api_ver) + "?limit=0"
+    def list_groups(self):
+        pass
+
+    def list_users(self):
+        api_url = DIRECTORIES_API.format(config.base_url, self._api_ver) + "/" + self._directory_id + "/users?q=" + config.search_pattern
         self.ensure_signature_in_header(api_key=config.eaa_api_key, secret_key=config.eaa_api_secret)
         resp = requests.get(
             api_url,
             headers=self._headers,
             allow_redirects=False,
         )
-        if resp.status_code != 200:
-            LOG.error("Error retrieve directories (%s)" % resp.status_code)
         resj = resp.json()
-        for d in resj.get("objects"):
-            print("dir://{dirid},{name},{user_count}".format(
-                dirid=d.get("uuid_url"), 
-                name=d.get("name"), 
-                user_count=d.get("user_count"))
+        for u in resj.get("objects"):
+            print("user://{uuid},{fn},{ln}".format(
+                uuid=u.get('uuid_url'),
+                fn=u.get('first_name'),
+                ln=u.get('last_name')
+            ))
+
+    def list_directories(self):
+        api_url = DIRECTORIES_API.format(config.base_url, self._api_ver) + "?limit=0"
+        self.ensure_signature_in_header(api_key=config.eaa_api_key, secret_key=config.eaa_api_secret)
+        if config.directory_id:
+            if config.users:
+                print("list users matching %s in %s" % (config.search_pattern, self._directory_id))
+                self.list_users()
+            elif config.groups:
+                print("list groups matching %s" % config.search_pattern)
+        else:
+            resp = requests.get(
+                api_url,
+                headers=self._headers,
+                allow_redirects=False,
             )
+            if resp.status_code != 200:
+                LOG.error("Error retrieve directories (%s)" % resp.status_code)
+            resj = resp.json()
+            for d in resj.get("objects"):
+                print("dir://{dirid},{name},{user_count}".format(
+                    dirid=d.get("uuid_url"),
+                    name=d.get("name"),
+                    user_count=d.get("user_count"))
+                )
 
     def delgroup(self, group_uuid):
         raise NotImplemented("Group deletion is not implemented")
@@ -201,9 +282,51 @@ class DirectoryAPI(BaseAPI):
                 LOG.warn("Invalid DN: %s" % scanned_dn)
 
 
-class Etl(object):
-    """ETL"""
+class ApplicationAPI(BaseAPI):
+    """
+    EAA Applications
+    Only supported with {OPEN} API
+    """
+    def process_command(self):
+        applications = list()
+        print("Application ID: '%s'" % config.application_id)
+        print("Application action: %s" % config.action)
+        if self._config.application_id == '-':
+            for line in sys.stdin:
+                scanned_items = line.split(',')
+                if len(scanned_items) == 0:
+                    logging.warning("Cannot parse line: %s" % line)
+                    continue
+                try:
+                    applications.append(EAAItem(scanned_items[0]))
+                except EAAInvalidMoniker:
+                    logging.warning("Invalid application moniker: %s" % scanned_items[0])
+        else:
+            applications.append(EAAItem(config.application_id))
+        if config.action == "deploy":
+            for a in applications:
+                self.deploy(a)
+        logging.info(applications)
 
+    def deploy(self, app_moniker):
+        """
+        Deploy an EAA application.
+        """
+        if not isinstance(app_moniker, EAAItem):
+            raise TypeError("Deploy expect and EAAItem, %s provided" % type(app_moniker))
+        if app_moniker.objtype != 'app':
+            raise ValueError("EAAItem object must be app, %s found" % app_moniker.objtype)
+        deploy = self.post('/crux/v1/mgmt-pop/apps/{applicationId}/deploy'.format(applicationId=app_moniker.uuid))
+        logging.info("ApplicationAPI: deploy app response: %s" % deploy.status_code)
+        if deploy.status_code != 200:
+            logging.error(deploy.text)
+
+
+class Etl(object):
+    """
+    EAA logs
+    TODO: refactor as LogsAPI
+    """
     def __init__(self, out, api_version='v1'):
         self._api_ver = api_version
         self._content_type_json = {'content-type': 'application/json'}
@@ -392,30 +515,36 @@ def fetch_logs():
 
 if __name__ == "__main__":
 
-    logging.basicConfig(filename=log_file, level=log_level(),
-        format='%(asctime)s [%(levelname)s] %(threadName)s %(message)s')
+    logging.basicConfig(filename=log_file, level=log_level(), format=LOG_FMT)
 
     LOG.debug("Python %s" % platform.python_version())
 
-    if config.command == "version":
-        print(__version__)
-    elif config.command == "log":
-        fetch_logs()
-    elif config.command == "search":
-        # print('Search for %s...' % config.pattern)
-        s = SearchAPI()
-        s.search_app(config.pattern)
-    elif config.command == "dir":
-        if config.action is None or config.action == "list":
-            d = DirectoryAPI(None)
-            d.list_directories()
-        else:
-            d = DirectoryAPI(config.directory_id)
-            if config.action == "addgroup":
-                d.addgroup(config.dn)
-            elif config.action == "addovlgroup":
-                d.addoverlaygroup(config.group)
+    try:
+        if config.command == "version":
+            print(__version__)
+        elif config.command == "log":
+            fetch_logs()
+        elif config.command == "search":
+            s = SearchAPI()
+            s.search_app(config.pattern)
+        elif config.command == "dir":
+            if config.action is None or config.action == "list":
+                d = DirectoryAPI(config.directory_id)
+                d.list_directories()
             else:
-                raise Exception("Unsupported directory action: %s" % config.action)
+                d = DirectoryAPI(config.directory_id)
+                if config.action == "addgroup":
+                    d.addgroup(config.dn)
+                elif config.action == "addovlgroup":
+                    d.addoverlaygroup(config.group)
+                else:
+                    raise Exception("Unsupported directory action: %s" % config.action)
+        elif config.command == "app":
+            a = ApplicationAPI("crux", config)
+            a.process_command()
+
+    except Exception:
+        logging.exception("General exception")
+        sys.exit(2)
 
 # end of file

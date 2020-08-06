@@ -36,6 +36,10 @@ $interpreter search
 # Directory operations
 
 $interpreter dir list
+##$interpreter dir://abcdef groups 
+##$interpreter dir://abcdef users androcho
+##$interpreter dir://abcdef add user://abcdef group:// 
 
+$interpreter idp "Global IdP" block "testblkuser1"
 
 echo "Test completed."
