@@ -3,43 +3,59 @@
 ## Table of contents<!-- omit in toc -->
 
 - [Introduction](#introduction)
-- [Feature highlight](#feature-highlight)
+- [Key features](#key-features)
 - [Installation](#installation)
   - [Configuration file](#configuration-file)
   - [Upgrade](#upgrade)
-- [Fields documentation](#fields-documentation)
 - [Examples](#examples)
-  - [Pull EAA logs](#pull-eaa-logs)
+  - [EAA event logs](#eaa-event-logs)
+  - [Applications](#applications)
+  - [Directory operations](#directory-operations)
 - [Troubleshooting](#troubleshooting)
 
 ## Introduction
 
-[Enterprise Application Access (EAA)](https://www.akamai.com/us/en/products/security/enterprise-application-access.jsp) comes with a full suite of APIs. Yet you need to build scripts to be able to interact with the service.
+[Enterprise Application Access (EAA)](https://www.akamai.com/us/en/products/security/enterprise-application-access.jsp) comes with a full suite of APIs. 
+Yet you need to write scripts or use [Postman](https://developer.akamai.com/authenticate-with-postman) to be able to interact with the service.
 
 With [Akamai CLI](https://developer.akamai.com/cli) you can run very common operations directly from the command line, no coding required. 
 
-This can be particularly helpful if you plan to consume EAA logs into your favorite SIEM.
+This can be helpful if you plan to consume EAA logs into your favorite SIEM, or automate some operation in your workflow with Bash, Powershell or solution like Ansible.
 
-## Feature highlight
+## Key features
 
-- View access logs (identification, application activity)
-- View admin logs (admin portal access, config change, deployment, deletion)
-- Send the logs to a file
-- Blocking mode (similar to `tail -f`)
-- Alternatively, you can specify a date range with `--start` and `--end`
+- View logs
+  - View access logs (identification, application activity)
+  - View admin logs (admin portal access, config change, deployment, deletion)
+  - Send the logs to a file
+  - Blocking mode (similar to `tail -f`)
+  - Alternatively, you can specify a date range with `--start` and `--end`
+- Application
+  - Save, restore/update, deploy
+  - Batch operation
+- Directory
+  - Create group and group overlay
+  - Synchronize with your LDAP or Active Directory
 
 ## Installation
 
-Make sure your first have the akamai CLI installed on your device.
+Make sure your first have Akamai CLI installed on your machine.
+
+We support a wide variety of platform: Windows, Mac, Linux, container...
+
 For more information, please visit the [Getting Started](https://developer.akamai.com/cli/docs/getting-started) guide on developer.akamai.com.
 
-Once the CLI is ready, EAA module installation is done via `akamai install` command:
+Once the Akamai CLI is ready, EAA module installation is done via `akamai install eaa` command:
 
 ```
 $ akamai install eaa
 ```
 
-The command takes care of all the dependencies. This CLI module uses Python in the background.
+And voilà!
+
+The command takes care of all the dependencies. 
+
+This CLI module uses Python in the background.
 
 ### Configuration file
 
@@ -53,26 +69,24 @@ eaa_api_key = XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXXX
 eaa_api_secret = XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXXX
 ```
 
-You can obtain key and secret from your EAA administator, in **System** > **Settings** and then click **Generate new API Key** in the **API** section.
+You can obtain key and secret from your EAA administrator, in **System** > **Settings** and then click **Generate new API Key** in the **API** section.
 
 ### Upgrade
 
-To upgrade your CLI EAA module to the latest version, we recommend uninstall followed by install
+To upgrade your CLI EAA module to the latest version, use:
 
 ```bash
-$ akamai uninstall eaa
-$ akamai install eaa
+$ akamai upgrade eaa
 ```
-## Fields documentation
-
-For detailed description about each field, please refer to the product documentation on https://learn.akamai.com.
 
 ## Examples
 
-### Pull EAA logs
+### EAA event logs
 
 EAA has two types of logs, the user access logs and the administrators audit logs.
-You can p   ull log either in near realtime, using `-f`, or retrieve a period of time passing EPOCH timestamp in `--start` and `--end`
+For detailed description about each field, please refer to the product documentation on [https://learn.akamai.com](https://learn.akamai.com/en-us/webhelp/enterprise-application-access/eaa-logs-from-eaa-api-and-splunk/GUID-07D6B02C-1EDE-4D16-A19D-687449B4A748.html).
+
+You can pull log either in near realtime, using `-f`, or retrieve a period of time passing EPOCH timestamp in `--start` and `--end`
 You cannot combine `-f` and explicit date range.
 
 Pull user access logs, block till new logs are received.
@@ -89,14 +103,65 @@ $ START=$(bc <<< "$(date +%s) - 6 * 60 * 60")
 $ akamai eaa log access -s $START
 ```
 
-Send the user access log to a file (utf-8 encoding is being used):
+Send the **user access events** to a file (utf-8 encoding is being used):
 ```bash
 $ akamai eaa log access --tail -o /tmp/eaa_access.log
 ```
 
-Pull admin audit logs, block till new logs are received
+Pull **admin audit events**, block till new logs are received
 ```bash
 $ akamai eaa log admin --tail
+```
+
+### Applications
+
+```
+$ akamai eaa search datascience
+app://mD_Pw1XASpyVJc2JwgICTg,Data Science,akdemo-datascience,akdemo-datascience.go.akamai-access.com,4
+Found 1 app(s), total 124 app(s)
+```
+
+You can save locally the application
+```
+$ akamai eaa app app://mD_Pw1XASpyVJc2JwgICTg > ~/eaa_app_datascience_v3.json
+```
+
+And restore
+```
+$ cat ~/eaa_app_datascience_v3.json | akamai eaa app app://mD_Pw1XASpyVJc2JwgICTg update
+```
+
+
+Or quickly walk through the JSON tree with `jq`
+```
+$ akamai eaa app app://mD_Pw1XASpyVJc2JwgICTg | jq .advanced_settings.websocket_enabled
+"true"
+```
+
+You can pipe command as well, example to deploy all the application matching "tunnel"
+
+```
+$ akamai eaa search tunnel|cut -d, -f1|akamai eaa app - deploy
+```
+
+### Directory operations
+
+List the configured directories
+
+```
+$ akamai eaa dir
+dir://FuiibQiDQzmC34oBx7INfQ,Cloud Directory,7
+dir://2Kz2YqmgSpqT_IJq9BLkWg,ad.akamaidemo.net,108
+dir://EX5-YjMyTrKgeWKHrqhUEA,Okta LDAP,10
+dir://Ygl1BpAFREiHrA8HR7dFhA,Azure AD,1
+```
+
+Force synchronization
+
+```
+$ akamai eaa dir dir://2Kz2YqmgSpqT_IJq9BLkWg sync
+Synchronize directory 2Kz2YqmgSpqT_IJq9BLkWg
+Directory 2Kz2YqmgSpqT_IJq9BLkWg synchronization requested.
 ```
 
 ## Troubleshooting
