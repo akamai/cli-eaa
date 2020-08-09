@@ -6,7 +6,7 @@
 - [Key features](#key-features)
 - [Installation](#installation)
   - [Configuration file](#configuration-file)
-  - [Upgrade](#upgrade)
+  - [Upgrade cli-eaa](#upgrade-cli-eaa)
 - [Examples](#examples)
   - [EAA event logs](#eaa-event-logs)
   - [Applications](#applications)
@@ -45,7 +45,7 @@ We support a wide variety of platform: Windows, Mac, Linux, container...
 
 For more information, please visit the [Getting Started](https://developer.akamai.com/cli/docs/getting-started) guide on developer.akamai.com.
 
-Once the Akamai CLI is ready, EAA module installation is done via `akamai install eaa` command:
+Once the Akamai CLI is installed, the `cli-eaa` module installation is done via `akamai install eaa` command:
 
 ```
 $ akamai install eaa
@@ -59,19 +59,39 @@ This CLI module uses Python in the background.
 
 ### Configuration file
 
-In order to work, the CLI module will look for an `.edgerc` configuration file in the path or in your home directory.
+In order to work, the CLI module will look for an `.edgerc` configuration file stored 
+in your home directory or your prefered location. \
+For the latter make sure to use the `--edgerc` parameter in the command line.\
+
+To create a {OPEN} API user, follow [these instructions](https://developer.akamai.com/legacy/introduction/Prov_Creds.html).
+Make sure the API user has READ-WRITE permission to *Enterprise Application Access*.
+
+To create a legacy API key and secret from, connect to Akamai Control Center. 
+- use Enterprise Application Access in the left menu
+- go to **System** > **Settings** and 
+- then click **Generate new API Key** in the **API** section of the page
 
 The `.edgerc` file should look like:
-```
+
+```INI
 [default]
+
+; EAA Legacy API used by the 'akamai eaa log' command
 eaa_api_host = manage.akamai-access.com
 eaa_api_key = XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXXX
 eaa_api_secret = XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXXX
+
+; {OPEN} API for everything else
+host = akaa-xxxxxxxxxxxxxxxx-xxxxxxxxxxxxxxxx.luna.akamaiapis.net
+client_token = akab-xxxxxxxxxxxxxxxx-xxxxxxxxxxxxxxxx
+client_secret = xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+access_token = akab-xxxxxxxxxxxxxxxx-xxxxxxxxxxxxxxxx
+; If your organization have multiple contracts with EAA service
+; please add it below. Contact your Akamai representative to obtain it
+contractid = A-B-1CD2E34
 ```
 
-You can obtain key and secret from your EAA administrator, in **System** > **Settings** and then click **Generate new API Key** in the **API** section.
-
-### Upgrade
+### Upgrade cli-eaa
 
 To upgrade your CLI EAA module to the latest version, use:
 
@@ -132,16 +152,24 @@ $ cat ~/eaa_app_datascience_v3.json | akamai eaa app app://mD_Pw1XASpyVJc2JwgICT
 ```
 
 
-Or quickly walk through the JSON tree with `jq`
+Or quickly walk through the JSON tree with `jq`.
 ```
-$ akamai eaa app app://mD_Pw1XASpyVJc2JwgICTg | jq .advanced_settings.websocket_enabled
+$ akamai eaa -b app app://mD_Pw1XASpyVJc2JwgICTg | jq .advanced_settings.websocket_enabled
 "true"
+```
+
+One question we often get: *What are the applications using connector `xyz`?*\
+Buckle up, we use `jq` and `grep`.\
+Note: we use `-b` to avoid the extra info the CLI spills out, like the footer.
+
+```
+$ akamai eaa -b search | ./akamai-eaa app - | jq -j '.name, ": ", (.agents[]|.name, " "), "\n"'|grep xyz
 ```
 
 You can pipe command as well, example to deploy all the application matching "tunnel"
 
 ```
-$ akamai eaa search tunnel|cut -d, -f1|akamai eaa app - deploy
+$ akamai eaa -b search tunnel|akamai eaa app - deploy
 ```
 
 ### Directory operations
@@ -156,7 +184,7 @@ dir://EX5-YjMyTrKgeWKHrqhUEA,Okta LDAP,10
 dir://Ygl1BpAFREiHrA8HR7dFhA,Azure AD,1
 ```
 
-Force synchronization
+Trigger directory synchronization
 
 ```
 $ akamai eaa dir dir://2Kz2YqmgSpqT_IJq9BLkWg sync
