@@ -1,4 +1,4 @@
 requests
 six
 edgegrid-python
-python-ldap
+colorama

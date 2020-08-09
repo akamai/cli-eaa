@@ -56,7 +56,7 @@ class EdgeGridConfig():
 
         dir_parser = subparsers.add_parser('dir', aliases=['d'], help='Manage EAA directories')
         dir_parser.add_argument('directory_id', help="EAA Directory ID (e.g. dir://abcdefghi)", nargs='?')
-        subsub = dir_parser.add_subparsers(dest="action", help='Directory action (default is: list)', required=False)
+        subsub = dir_parser.add_subparsers(dest="action", help='Directory action (default is: list)')
 #        subsub.add_parser("list", help="List EAA directories")
 
         listgrp_parser = subsub.add_parser("list", help="List all groups existing in an EAA directory")
@@ -82,7 +82,7 @@ class EdgeGridConfig():
         # New: akamai eaa app xyz add_dnsexception www.abcd.efg
         #      akamai eaa app xyz del_dnsexception www.abcd.efg
         app_parser = subparsers.add_parser('app', aliases=["a"], help='Manage EAA applications')
-        app_parser.add_argument(dest='application_id', help="Application ID or '-'")
+        app_parser.add_argument(dest='application_id', help="Application ID, AppGroup ID or '-'")
         subsub = app_parser.add_subparsers(dest="action", help='Application action')
         adddns_parser = subsub.add_parser("add_dnsexception", help="Add DNS Exception to tunnel-type client-app")
         adddns_parser.add_argument(dest="exception_fqdn", metavar='fqdn', nargs="+", help='DNS exception FQDN')
@@ -91,6 +91,7 @@ class EdgeGridConfig():
         subsub.add_parser("deploy", help="Deploy the application")
         subsub.add_parser("view", help="Dump application configuration (JSON)")
         subsub.add_parser("viewgroups", help="Dump application configuration (JSON)")
+        subsub.add_parser("delgroup", help="Remove group from application, appgroup ID must provided")
 
         # choices=['deploy', 'add_dnsexception', 'del_dnsexception', 'save']
 
@@ -159,7 +160,8 @@ class EdgeGridConfig():
         for option in arguments:
             setattr(self, option, arguments[option])
 
-        self.create_base_url()
+        if hasattr(self, 'eaa_api_host'):
+            self.create_base_url()
 
     def create_base_url(self):
         self.base_url = "https://%s" % self.eaa_api_host

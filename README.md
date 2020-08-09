@@ -96,7 +96,7 @@ contractid = A-B-1CD2E34
 To upgrade your CLI EAA module to the latest version, use:
 
 ```bash
-$ akamai upgrade eaa
+$ akamai update eaa
 ```
 
 ## Examples
@@ -166,10 +166,15 @@ Note: we use `-b` to avoid the extra info the CLI spills out, like the footer.
 $ akamai eaa -b search | ./akamai-eaa app - | jq -j '.name, ": ", (.agents[]|.name, " "), "\n"'|grep xyz
 ```
 
+View groups associated with a particular application
+```
+./akamai-eaa app app://FWbUCfpvRKaSOX1rl0u55Q viewgroups
+```
+
 You can pipe command as well, example to deploy all the application matching "tunnel"
 
 ```
-$ akamai eaa -b search tunnel|akamai eaa app - deploy
+$ akamai eaa -b search bastion|akamai eaa app - deploy
 ```
 
 ### Directory operations

@@ -35,25 +35,25 @@ import util
 import fnmatch
 from urllib.parse import urljoin
 from enum import Enum
+import re
 
 # 3rd party
 import six
-import ldap
+from colorama import Style
 from akamai.edgegrid import EdgeGridAuth, EdgeRc
 
 from config import EdgeGridConfig
 
-__version__ = '0.1.5'
+__version__ = '0.2.0'
 
 # If all parameters are set already, use them.  Otherwise
 # use the config
-config = EdgeGridConfig({"verbose": False}, "default")
-verbose = getattr(config, "verbose", False)
+config = EdgeGridConfig({'verbose': False}, 'default')
+verbose = getattr(config, 'verbose', False)
 
-SOURCE = "akamai-cli/eaa"
+SOURCE = 'akamai-cli/eaa'
 LOG_FMT = '%(asctime)s [%(levelname)s] %(threadName)s %(message)s'
 
-datef = "%Y-%m-%d %H:%M"
 log_file = None
 stop_event = Event()
 
@@ -95,7 +95,7 @@ class EAAItem(object):
     def __init__(self, obj_url):
         if not isinstance(obj_url, six.string_types):
             raise TypeError('obj_url must be a string')
-        if '://' not in obj_url:
+        if EAAItem.SEP not in obj_url:
             raise EAAInvalidMoniker('Invalid EAA Object URL %s' % obj_url)
         scanned_type, scanned_uuid = obj_url.split(EAAItem.SEP)
         self.objtype = scanned_type
@@ -103,6 +103,9 @@ class EAAItem(object):
 
     def __repr__(self):
         return self.objtype + EAAItem.SEP + self.uuid
+
+    def __str__(self):
+        return self.__repr__()
 
 
 class BaseAPI(object):
@@ -159,11 +162,13 @@ class BaseAPI(object):
             logging.info("BaseAPI: GET response body: %s" % response.text)
         return response
 
-    def post(self, url_path, json=None):
+    def post(self, url_path, json=None, params=None):
         url = urljoin(self._baseurl, url_path)
         logging.info("API URL: %s" % url)
-        response = self._session.post(url, json=json)
+        response = self._session.post(url, json=json, params=self.build_params(params))
         logging.info("BaseAPI: POST response is HTTP %s" % response.status_code)
+        if response.status_code != 200:
+            logging.info("BaseAPI: POST response body: %s" % response.text)
         return response
 
     def put(self, url_path, json=None):
@@ -171,6 +176,17 @@ class BaseAPI(object):
         logging.info("API URL: %s" % url)
         response = self._session.put(url, json=json)
         logging.info("BaseAPI: PUT response is HTTP %s" % response.status_code)
+        if response.status_code != 200:
+            logging.info("BaseAPI: PUT response body: %s" % response.text)
+        return response
+
+    def delete(self, url_path, json=None, params=None):
+        url = urljoin(self._baseurl, url_path)
+        logging.info("API URL: %s" % url)
+        response = self._session.delete(url, json=json)
+        logging.info("BaseAPI: DELETE response is HTTP %s" % response.status_code)
+        if response.status_code != 200:
+            logging.info("BaseAPI: DELETE response body: %s" % response.text)
         return response
 
 
@@ -292,8 +308,16 @@ class DirectoryAPI(BaseAPI):
                     user_count=d.get("user_count"))
                 )
 
-    def delgroup(self, group_uuid):
+    def delgroup(self, group_id):
         raise NotImplementedError("Group deletion is not implemented")
+
+    def deloverlaygroup(self, group_id):
+        raise NotImplementedError("Group Overlay deletion is not implemented")
+        url = "mgmt-pop/directories/{directory_id}/groups/{group_id}".format(
+                directory_id=self._directory_id,
+                group_id=group_id
+            )
+        self.delete(url)
 
     def addoverlaygroup(self, groupname):
         url = "mgmt-pop/directories/{directory_id}/groups".format(directory_id=self._directory_id)
@@ -303,14 +327,30 @@ class DirectoryAPI(BaseAPI):
         else:
             print("Overlay group %s added to directory %s" % (groupname, self._directory_id))
 
+    @staticmethod
+    def groupname_from_dn(dn):
+        """
+        Extract the group name from a full Distinguished Name string.
+        Reference: https://regexr.com/3l4au
+        """
+        regexp = '^(?:(?P<cn>CN=(?P<name>[^,]*)),)?(?:(?P<path>(?:(?:CN|OU)=[^,]+,?)+),)?(?P<domain>(?:DC=[^,]+,?)+)$'
+        matches = re.search(regexp, dn)
+        if matches:
+            return matches.group('name')
+        else:
+            return False
+
     def addgroup(self, dn):
+        """
+        Add a group to EAA Directory configuration.
+        :param dn: Distiguished Name of the group
+                   Example: CN=Print Operators,CN=Builtin,DC=AKAMAIDEMO,DC=NET
+        """
         url = "mgmt-pop/directories/{directory_id}/groups".format(directory_id=self._directory_id)
         for scanned_dn in util.argument_tolist((dn,)):
-            if ldap.dn.is_dn(scanned_dn):
-                parsed_dn = ldap.dn.str2dn(scanned_dn)
-                group = parsed_dn[0][0][1]
-                logging.debug("Adding group %s" % (group))
-                logging.debug("Request headers: %s" % self._headers)
+            group = DirectoryAPI.groupname_from_dn(scanned_dn)
+            if group:
+                logging.debug("Adding group %s" % (scanned_dn))
                 resp = self.post(url, json={"name": group, "dn": scanned_dn})
                 if resp.status_code != 200:
                     logging.error(resp.status_code)
@@ -354,6 +394,7 @@ class ApplicationAPI(BaseAPI):
         Process command passed from the CLI.
         """
         applications = list()
+        appgroups = list()
         if self._config.application_id == '-':
             for line in sys.stdin:
                 scanned_items = line.split(',')
@@ -361,7 +402,11 @@ class ApplicationAPI(BaseAPI):
                     logging.warning("Cannot parse line: %s" % line)
                     continue
                 try:
-                    applications.append(EAAItem(scanned_items[0]))
+                    scanned_obj = EAAItem(scanned_items[0])
+                    if scanned_obj.objtype == 'app':
+                        applications.append(scanned_obj)
+                    elif scanned_obj.objtype == 'appgrp':
+                        appgroups.append(scanned_obj)
                 except EAAInvalidMoniker:
                     logging.warning("Invalid application moniker: %s" % scanned_items[0])
         else:
@@ -379,8 +424,10 @@ class ApplicationAPI(BaseAPI):
                 self.del_dnsexception(a)
         elif config.action == 'viewgroups':
             for a in applications:
-                app_groups = self.loadgroups(a)
-                print(json.dumps(app_groups))
+                self.loadgroups(a)
+        elif config.action == 'delgroup':
+            for ag in appgroups:
+                self.delgroup(ag)
         else:  # view by default
             for a in applications:
                 app_config = self.load(a)
@@ -395,10 +442,35 @@ class ApplicationAPI(BaseAPI):
 
     def loadgroups(self, app_moniker):
         """Directory+Groups allowed to access this application."""
-        url_params = {'expand': 'true', 'expand_sdk': 'true'}
+        url_params = {'limit': 0, 'expand': 'true', 'expand_sdk': 'true'}
         url = 'mgmt-pop/apps/{applicationId}/groups'.format(applicationId=app_moniker.uuid)
         result = self.get(url, url_params)
-        return result.json().get('objects')
+        count = 0
+#        print("RAW DATA: %s" % result.json())
+        allowed_groups = result.json().get('objects')
+        if not self._config.batch:
+            print("# Allowed Groups to access app %s" % app_moniker)
+            print("# appgroup_id,group_id,group_name,dir_name,mfa")
+        for count, group in enumerate(allowed_groups, start=1):
+            association = group.get('resource_uri', {}).get('href')
+            print("appgrp://{appgroup_id},grp://{group_id},{name},{dir_name},{mfa}".format(
+                appgroup_id=association.split('/')[-1],
+                group_id=group.get('group').get('group_uuid_url'),
+                name=group.get('group').get('name'),
+                dir_name=group.get('group').get('dir_name'),
+                mfa=group.get('enable_mfa')
+            ))
+
+        if not self._config.batch:
+            print("# %s groups configured to access application %s" % (count, app_moniker))
+        return allowed_groups
+
+    def delgroup(self, appgroup_moniker):
+        print("Delete App-Group association %s..." % appgroup_moniker)
+        deletion = self.post('mgmt-pop/appgroups', params={'method': 'DELETE'},
+                             json={'deleted_objects': [appgroup_moniker.uuid]})
+        if deletion.status_code == 200:
+            print("Association %s deleted." % appgroup_moniker)
 
     def save(self, app_moniker, app_config):
         """
@@ -658,7 +730,7 @@ if __name__ == "__main__":
                 if config.action == "sync":
                     d.synchronize()
                 elif config.action == "addgroup":
-                    d.addgroup(config.dn)
+                    d.addgroup(config.group)
                 elif config.action == "addovlgroup":
                     d.addoverlaygroup(config.group)
                 else:
