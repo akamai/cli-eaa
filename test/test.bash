@@ -1,6 +1,8 @@
 #!/bin/bash
 #
 # Unit testing for cli-eaa
+# Works on macOs and Linux OS
+# Windows OS: not tested.
 
 dir=$(cd .. && pwd -P)
 
@@ -37,5 +39,10 @@ $interpreter search
 
 $interpreter dir list
 
+##$interpreter dir://abcdef groups 
+##$interpreter dir://abcdef users androcho
+##$interpreter dir://abcdef add user://abcdef group:// 
+
+# $interpreter idp "Global IdP" block "testblkuser1"
 
 echo "Test completed."

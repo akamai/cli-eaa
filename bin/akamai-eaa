@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 # Copyright 2020 Akamai Technologies, Inc. All Rights Reserved
 #
@@ -31,279 +31,663 @@ from datetime import datetime
 import logging
 import signal
 from threading import Event
+import util
+import fnmatch
+from urllib.parse import urljoin
+from enum import Enum
 import re
+
+# 3rd party
 import six
+from colorama import Style
+from akamai.edgegrid import EdgeGridAuth, EdgeRc
 
 from config import EdgeGridConfig
 
-__version__ = '0.1.2'
+__version__ = '0.2.0'
 
 # If all parameters are set already, use them.  Otherwise
 # use the config
-config = EdgeGridConfig({"verbose": False}, "default")
-verbose = getattr(config, "verbose", False)
+config = EdgeGridConfig({'verbose': False}, 'default')
+verbose = getattr(config, 'verbose', False)
 
-SOURCE = "akamai-cli/eaa"
-LOG_TYPE_EVENT = "access"
-LOG_TYPE_ADMIN = "admin"
-ADMINEVENT_API = "{}/api/{}/adminevents-reports/ops/splunk-query"
-ACCESSLOG_API = "{}/api/{}/analytics/ops"
-APPS_API = "{}/api/{}/apps"
-DIRECTORIES_API = "{}/api/{}/directories"
-LOG = logging.getLogger(__name__)
+SOURCE = 'akamai-cli/eaa'
+LOG_FMT = '%(asctime)s [%(levelname)s] %(threadName)s %(message)s'
 
-datef = "%Y-%m-%d %H:%M"
-collection_delay_minutes = 1
 log_file = None
-poll_interval_sec = 15
-line_count = 0
 stop_event = Event()
+
+
+class EAALegacyAuth(requests.auth.AuthBase):
+    """
+    EAA legacy API authentication for Requests
+    """
+    def __init__(self, key, secret):
+        self._key = key
+        self._secret = secret
+        self._signature = self.get_signature()
+
+    def get_signature(self):
+        encoding = 'ascii'
+        msg = "%s:%s" % (self._key, self._secret)
+        signature = hmac.new(
+            key=self._secret.encode(encoding),
+            msg=msg.encode(encoding),
+            digestmod=hashlib.sha256).digest()
+        signature = base64.b64encode(signature)
+        return signature.decode(encoding)
+
+    def __call__(self, r):
+        r.headers.update({'Authorization': 'Basic %s:%s' % (self._key, self._signature)})
+        return r
+
+
+class EAAInvalidMoniker(Exception):
+    pass
+
+
+class EAAItem(object):
+    """
+    Representation of an EAA object.
+    """
+    SEP = '://'
+
+    def __init__(self, obj_url):
+        if not isinstance(obj_url, six.string_types):
+            raise TypeError('obj_url must be a string')
+        if EAAItem.SEP not in obj_url:
+            raise EAAInvalidMoniker('Invalid EAA Object URL %s' % obj_url)
+        scanned_type, scanned_uuid = obj_url.split(EAAItem.SEP)
+        self.objtype = scanned_type
+        self.uuid = scanned_uuid
+
+    def __repr__(self):
+        return self.objtype + EAAItem.SEP + self.uuid
+
+    def __str__(self):
+        return self.__repr__()
 
 
 class BaseAPI(object):
 
-    def __init__(self, api_version='v1'):
-        self._api_ver = api_version
-        self._content_type_json = {'content-type': 'application/json'}
-        self._content_type_form = \
-            {'content-type': 'application/x-www-form-urlencoded'}
-        self._headers = None
+    class API_Version(Enum):
+        "API backend, either Legacy or {OPEN} API (support introduced in 2020 for EAA)."
+        Legacy = 1
+        OpenAPI = 2
 
-    def get_signature(self, access_key_id, secret_access_key):
-        encoding = 'ascii'
-        msg = "%s:%s" % (access_key_id, secret_access_key)
-        signature = hmac.new(
-            key=secret_access_key.encode(encoding),
-            msg=msg.encode(encoding),
-            digestmod=hashlib.sha256).digest()
-        # Base64 encode the signature
-        signature = base64.b64encode(signature)
-        LOG.debug("Signature: %s" % signature.decode(encoding))
-        return signature.decode(encoding)
+    def __init__(self, config=None, api=API_Version.Legacy):
 
-    def ensure_signature_in_header(self, api_key, secret_key):
-        signature = self.get_signature(access_key_id=api_key,
-                                       secret_access_key=secret_key)
-        self._headers = {'Authorization': 'Basic %s:%s' % (api_key, signature)}
-        self._headers.update(self._content_type_json)
+        self._config = config
+        edgerc = EdgeRc(config.edgerc)
+        section = config.section
+
+        if api == self.API_Version.Legacy:  # Prior to {OPEN} API
+            self._api_ver = api
+            self._content_type_json = {'content-type': 'application/json'}
+            self._content_type_form = \
+                {'content-type': 'application/x-www-form-urlencoded'}
+            self._headers = None
+            # self._baseurl = 'https://%s' % edgerc.get(section, 'host')
+            self._baseurl = 'https://%s/api/v1/' % edgerc.get(section, 'eaa_api_host')
+            self._session = requests.Session()
+            self._session.auth = EAALegacyAuth(
+                edgerc.get(section, 'eaa_api_key'),
+                edgerc.get(section, 'eaa_api_secret')
+            )
+        else:  # {OPEN} API
+            # TODO handle ambiguity when multiple contract ID are in use
+            self._baseurl = 'https://%s/crux/v1/' % edgerc.get(section, 'host')
+            self._session = requests.Session()
+            self._session.auth = EdgeGridAuth.from_edgerc(edgerc, section)
+
+        logging.info("Initialized with base_url %s" % self._baseurl)
+
+    def build_params(self, params=None):
+        default_params = {}
+        if hasattr(self._config, 'contract_id') and self._config.contract_id:
+            default_params.update({'contractId': self._config.contract_id})
+        if isinstance(params, dict):
+            default_params.update(params)
+        return default_params
+
+    def get(self, url_path, params=None):
+        """
+        Send a GET reques to the API.
+        """
+        url = urljoin(self._baseurl, url_path)
+        logging.info("API URL: %s" % url)
+        response = self._session.get(url, params=self.build_params(params))
+        logging.info("BaseAPI: GET response is HTTP %s" % response.status_code)
+        if response.status_code != 200:
+            logging.info("BaseAPI: GET response body: %s" % response.text)
+        return response
+
+    def post(self, url_path, json=None, params=None):
+        url = urljoin(self._baseurl, url_path)
+        logging.info("API URL: %s" % url)
+        response = self._session.post(url, json=json, params=self.build_params(params))
+        logging.info("BaseAPI: POST response is HTTP %s" % response.status_code)
+        if response.status_code != 200:
+            logging.info("BaseAPI: POST response body: %s" % response.text)
+        return response
+
+    def put(self, url_path, json=None):
+        url = urljoin(self._baseurl, url_path)
+        logging.info("API URL: %s" % url)
+        response = self._session.put(url, json=json)
+        logging.info("BaseAPI: PUT response is HTTP %s" % response.status_code)
+        if response.status_code != 200:
+            logging.info("BaseAPI: PUT response body: %s" % response.text)
+        return response
+
+    def delete(self, url_path, json=None, params=None):
+        url = urljoin(self._baseurl, url_path)
+        logging.info("API URL: %s" % url)
+        response = self._session.delete(url, json=json)
+        logging.info("BaseAPI: DELETE response is HTTP %s" % response.status_code)
+        if response.status_code != 200:
+            logging.info("BaseAPI: DELETE response body: %s" % response.text)
+        return response
 
 
 class SearchAPI(BaseAPI):
-    def search_app(self, s):
-        api_url = APPS_API.format(config.base_url, self._api_ver)
-        api_url += '?expand_sdk=true'
-        self.ensure_signature_in_header(api_key=config.eaa_api_key,
-                                        secret_key=config.eaa_api_secret)
-        LOG.debug("Request headers: %s" % self._headers)
-        # kwargs = {'limit': 100, 'offset': 0}
-        resp = requests.get(
-            api_url + '?expand_sdk=true&limit=100&offset=0',
-            headers=self._headers,
-            allow_redirects=False
-        )
-        # print(json.dumps(resp.json()))
+    """
+    Search EAA applications
+    2020-08-07: migrated to {OPEN} API
+    """
 
-        if resp.status_code != 200:
-            raise Exception('Invalid response %s from %s' %
-                            (resp.status_code, api_url))
+    SCAN_LIMIT = 1000
 
-        data = resp.json()
+    def __init__(self, config):
+        super(SearchAPI, self).__init__(config, api=BaseAPI.API_Version.OpenAPI)
+
+    def search_app(self, search_pattern):
+        url_params = {'limit': SearchAPI.SCAN_LIMIT}
+        search_app = self.get('mgmt-pop/apps', params=url_params)
+        self.process_response(search_app.json(), search_pattern)
+
+    def process_response(self, data, search_pattern):
         app_found = 0
         if data.get("meta"):
             app_count = data.get("meta").get("total_count")
 
-            for a in resp.json().get('objects', []):
-                if not config.pattern or (
-                    config.pattern and
-                        re.match(config.pattern, a.get('name'))):
-                    print('app://%s,%s,%s,%s,%s' % (
+            for a in data.get('objects', []):
+                if not search_pattern or (
+                    search_pattern and (
+                        fnmatch.fnmatch(a.get('name') or "", "*%s*" % search_pattern) or
+                        fnmatch.fnmatch(a.get('host') or "", "*%s*" % search_pattern) or
+                        fnmatch.fnmatch(a.get('cname') or "", "*%s*" % search_pattern)
+                    )
+                ):
+                    print('app://%s,%s,%s,%s,%s,%s' % (
                         a.get('uuid_url'),
+                        ApplicationAPI.Type(a.get('app_type')).name,
                         a.get('name'),
                         a.get('host'),
                         a.get('cname'),
-                        a.get('app_status')))
+                        ApplicationAPI.Status(a.get('app_status')).name))
                     app_found += 1
-            if app_found != app_count:
-                print("Found %s app(s), scanned %s app(s)" % (app_found, app_count))
-            else:
-                print("%s app(s)" % app_count)
-            # nLoops = (app_count / 100) + 1
-            # for i in range(0, nLoops):
-            #     kwargs = {}
-            #     kwargs['limit'] = 100
-            #     kwargs['offset'] = i * 100
-            #     response = HttpExecutor.get_instance().request(method='GET', url_suffix=url + "?expand_sdk=true",
-            #                                                     **kwargs)
-            #     apps1 = handle_response(response=response, resource_name='apps')
-            #     apps = apps + apps1
+            # Footer
+            if not config.batch:
+                if app_found != app_count:
+                    print("Found %s app(s), total %s app(s)" % (app_found, app_count))
+                else:
+                    print("%s app(s)" % app_count)
 
 
 class DirectoryAPI(BaseAPI):
+    """
+    Interact with EAA directory configurations.
+    """
+    # class DirectoryType(Enum):
+    #     CloudDirectory  7
+    #     LDAP: 10,
+    #     ActiveDirectory: 108
 
-    def __init__(self, directory_id):
-        super(DirectoryAPI, self).__init__()
-        self._directory_id = directory_id
+    class DirectoryStatus(Enum):
+        Status3 = 3
+
+    def __init__(self, config, directory_moniker=None):
+        super(DirectoryAPI, self).__init__(config, BaseAPI.API_Version.OpenAPI)
+        self._directory = None
+        self._directory_id = None
+        if directory_moniker:
+            self._directory = EAAItem(directory_moniker)
+            self._directory_id = self._directory.uuid
+
+    def list_groups(self):
+        url_params = {'limit': 0}
+        url = 'mgmt-pop/directories/{directory_id}/groups'.format(directory_id=self._directory_id)
+        if self._config.search_pattern:
+            url_params = url_params.update({'q': self._config.search_pattern})
+        resp = self.get(url, params=url_params)
+        resj = resp.json()
+        for u in resj.get('objects'):
+            print('group://{uuid},{name}'.format(
+                uuid=u.get('uuid_url'),
+                name=u.get('name')
+            ))
+
+    def list_users(self):
+        url_params = {'limit': 0}
+        url = 'mgmt-pop/users'
+        if self._config.search_pattern:
+            url_params = url_params.update({'q': self._config.search_pattern})
+        resp = self.get(url, params=url_params)
+        resj = resp.json()
+        for u in resj.get('objects'):
+            print("user://{uuid},{fn},{ln}".format(
+                uuid=u.get('uuid_url'),
+                fn=u.get('first_name'),
+                ln=u.get('last_name')
+            ))
 
     def list_directories(self):
-        api_url = DIRECTORIES_API.format(config.base_url, self._api_ver) + "?limit=0"
-        self.ensure_signature_in_header(api_key=config.eaa_api_key, secret_key=config.eaa_api_secret)
-        resp = requests.get(
-            api_url,
-            headers=self._headers,
-            allow_redirects=False,
-        )
-        if resp.status_code != 200:
-            LOG.error("Error retrieve directories (%s)" % resp.status_code)
-        resj = resp.json()
-        for d in resj.get("objects"):
-            print("dir://{dirid},{name},{user_count}".format(
-                dirid=d.get("uuid_url"), 
-                name=d.get("name"), 
-                user_count=d.get("user_count"))
-            )
+        if self._directory_id:
+            if self._config.users:
+                if self._config.search_pattern and not self._config.batch:
+                    print("# list users matching %s in %s" % (self._config.search_pattern, self._directory_id))
+                self.list_users()
+            elif self._config.groups:
+                if self._config.search_pattern and not self._config.batch:
+                    print("# list groups matching %s" % self._config.search_pattern)
+                self.list_groups()
+        else:
+            resp = self.get("mgmt-pop/directories")
+            if resp.status_code != 200:
+                logging.error("Error retrieve directories (%s)" % resp.status_code)
+            resj = resp.json()
+            # print(resj)
+            if not self._config.batch:
+                print("#moniker,directory_name,status,user_count")
+            for d in resj.get("objects"):
+                print("dir://{dirid},{name},{status},{user_count}".format(
+                    dirid=d.get("uuid_url"),
+                    name=d.get("name"),
+                    status=d.get("directory_status"),
+                    user_count=d.get("user_count"))
+                )
 
-    def delgroup(self, group_uuid):
-        raise NotImplemented("Group deletion is not implemented")
+    def delgroup(self, group_id):
+        raise NotImplementedError("Group deletion is not implemented")
+
+    def deloverlaygroup(self, group_id):
+        raise NotImplementedError("Group Overlay deletion is not implemented")
+        url = "mgmt-pop/directories/{directory_id}/groups/{group_id}".format(
+                directory_id=self._directory_id,
+                group_id=group_id
+            )
+        self.delete(url)
 
     def addoverlaygroup(self, groupname):
-        api_url = DIRECTORIES_API.format(config.base_url, self._api_ver) + \
-            "/" + self._directory_id + "/groups"
-        self.ensure_signature_in_header(api_key=config.eaa_api_key, secret_key=config.eaa_api_secret)
-        resp = requests.post(
-            api_url,
-            headers=self._headers,
-            allow_redirects=False,
-            json={"status": 1, "group_type": 4, "name": groupname}
-        )
+        url = "mgmt-pop/directories/{directory_id}/groups".format(directory_id=self._directory_id)
+        resp = self.post(url, json={"status": 1, "group_type": 4, "name": groupname})
         if resp.status_code != 200:
-            LOG.error("Error adding group to ")
+            logging.error("Error adding group to directory %s" % self._directory_id)
+        else:
+            print("Overlay group %s added to directory %s" % (groupname, self._directory_id))
 
-    def addgroup(self, group, dn):
-        api_url = DIRECTORIES_API.format(config.base_url, self._api_ver) + "/" + self._directory_id + "/groups"
-        self.ensure_signature_in_header(api_key=config.eaa_api_key, secret_key=config.eaa_api_secret)
-        LOG.debug("Adding group %s (DN: %s)" % (group, dn))
-        LOG.debug("Request headers: %s" % self._headers)
-        resp = requests.post(
-            api_url,
-            headers=self._headers,
-            allow_redirects=False,
-            json={"name": group, "dn": dn}
+    @staticmethod
+    def groupname_from_dn(dn):
+        """
+        Extract the group name from a full Distinguished Name string.
+        Reference: https://regexr.com/3l4au
+        """
+        regexp = '^(?:(?P<cn>CN=(?P<name>[^,]*)),)?(?:(?P<path>(?:(?:CN|OU)=[^,]+,?)+),)?(?P<domain>(?:DC=[^,]+,?)+)$'
+        matches = re.search(regexp, dn)
+        if matches:
+            return matches.group('name')
+        else:
+            return False
+
+    def addgroup(self, dn):
+        """
+        Add a group to EAA Directory configuration.
+        :param dn: Distiguished Name of the group
+                   Example: CN=Print Operators,CN=Builtin,DC=AKAMAIDEMO,DC=NET
+        """
+        url = "mgmt-pop/directories/{directory_id}/groups".format(directory_id=self._directory_id)
+        for scanned_dn in util.argument_tolist((dn,)):
+            group = DirectoryAPI.groupname_from_dn(scanned_dn)
+            if group:
+                logging.debug("Adding group %s" % (scanned_dn))
+                resp = self.post(url, json={"name": group, "dn": scanned_dn})
+                if resp.status_code != 200:
+                    logging.error(resp.status_code)
+            else:
+                logging.warn("Invalid DN: %s" % scanned_dn)
+
+    def synchronize(self):
+        print("Synchronize directory %s..." % self._directory_id)
+        response = self.post("mgmt-pop/directories/{dirId}/sync".format(dirId=self._directory_id))
+        if response.status_code == 200 and not self._config.batch:
+            print("Directory %s synchronization requested." % self._directory_id)
+
+
+class ApplicationAPI(BaseAPI):
+    """
+    EAA Applications
+    Only supported with {OPEN} API
+    """
+
+    class Status(Enum):
+        NotReady = 1
+        Ready = 2
+        Pending = 3
+        Deployed = 4
+        Failed = 5
+        CloudDeployed = 6
+        ConnectorDeploy = 7
+
+    class Type(Enum):
+        Hosted = 1
+        SaaS = 2
+        Bookmark = 3
+        Tunnel = 4
+        ETP = 5
+
+    def __init__(self, config):
+        super(ApplicationAPI, self).__init__(config, api="open")
+
+    def process_command(self):
+        """
+        Process command passed from the CLI.
+        """
+        applications = list()
+        appgroups = list()
+        if self._config.application_id == '-':
+            for line in sys.stdin:
+                scanned_items = line.split(',')
+                if len(scanned_items) == 0:
+                    logging.warning("Cannot parse line: %s" % line)
+                    continue
+                try:
+                    scanned_obj = EAAItem(scanned_items[0])
+                    if scanned_obj.objtype == 'app':
+                        applications.append(scanned_obj)
+                    elif scanned_obj.objtype == 'appgrp':
+                        appgroups.append(scanned_obj)
+                except EAAInvalidMoniker:
+                    logging.warning("Invalid application moniker: %s" % scanned_items[0])
+        else:
+            applications.append(EAAItem(config.application_id))
+
+        if config.action == "deploy":
+            for a in applications:
+                self.deploy(a)
+                print("Application %s deployment requested, it may take a few minutes before it gets live." % a)
+        elif config.action == "add_dnsexception":
+            for a in applications:
+                self.add_dnsexception(a)
+        elif config.action == "del_dnsexception":
+            for a in applications:
+                self.del_dnsexception(a)
+        elif config.action == 'viewgroups':
+            for a in applications:
+                self.loadgroups(a)
+        elif config.action == 'delgroup':
+            for ag in appgroups:
+                self.delgroup(ag)
+        else:  # view by default
+            for a in applications:
+                app_config = self.load(a)
+                print(json.dumps(app_config))
+                # print(app_config)
+
+    def load(self, app_moniker):
+        url_params = {'expand': 'true', 'expand_sdk': 'true'}
+        url = 'mgmt-pop/apps/{applicationId}'.format(applicationId=app_moniker.uuid)
+        result = self.get(url, params=url_params)
+        return result.json()
+
+    def loadgroups(self, app_moniker):
+        """Directory+Groups allowed to access this application."""
+        url_params = {'limit': 0, 'expand': 'true', 'expand_sdk': 'true'}
+        url = 'mgmt-pop/apps/{applicationId}/groups'.format(applicationId=app_moniker.uuid)
+        result = self.get(url, url_params)
+        count = 0
+#        print("RAW DATA: %s" % result.json())
+        allowed_groups = result.json().get('objects')
+        if not self._config.batch:
+            print("# Allowed Groups to access app %s" % app_moniker)
+            print("# appgroup_id,group_id,group_name,dir_name,mfa")
+        for count, group in enumerate(allowed_groups, start=1):
+            association = group.get('resource_uri', {}).get('href')
+            print("appgrp://{appgroup_id},grp://{group_id},{name},{dir_name},{mfa}".format(
+                appgroup_id=association.split('/')[-1],
+                group_id=group.get('group').get('group_uuid_url'),
+                name=group.get('group').get('name'),
+                dir_name=group.get('group').get('dir_name'),
+                mfa=group.get('enable_mfa')
+            ))
+
+        if not self._config.batch:
+            print("# %s groups configured to access application %s" % (count, app_moniker))
+        return allowed_groups
+
+    def delgroup(self, appgroup_moniker):
+        print("Delete App-Group association %s..." % appgroup_moniker)
+        deletion = self.post('mgmt-pop/appgroups', params={'method': 'DELETE'},
+                             json={'deleted_objects': [appgroup_moniker.uuid]})
+        if deletion.status_code == 200:
+            print("Association %s deleted." % appgroup_moniker)
+
+    def save(self, app_moniker, app_config):
+        """
+        Save/update an EAA application configuration.
+        """
+        update = self.put(
+            'mgmt-pop/apps/{applicationId}'.format(applicationId=app_moniker.uuid),
+            json=app_config
         )
-        if resp.status_code != 200:
-            LOG.error(resp.status_code)
+        logging.info("Update app response: %s" % update.status_code)
+        logging.info("Update app response: %s" % update.text)
+        if update.status_code != 200:
+            exit(2)
+
+    def add_dnsexception(self, app_moniker):
+        logging.info("Adding DNS exception: %s" % config.exception_fqdn)
+        appcfg = self.load(app_moniker)
+        dns_exceptions = set(appcfg.get('advanced_settings', {}).get('domain_exception_list').split(','))
+        dns_exceptions |= set(config.exception_fqdn)
+        appcfg["advanced_settings"]["domain_exception_list"] = ','.join(dns_exceptions)
+        self.save(app_moniker, appcfg)
+
+    def del_dnsexception(self, app_moniker):
+        logging.info("Remove DNS exception: %s" % config.exception_fqdn)
+        pass
+
+    def deploy(self, app_moniker):
+        """
+        Deploy an EAA application.
+        """
+        if not isinstance(app_moniker, EAAItem):
+            raise TypeError("Deploy expect and EAAItem, %s provided" % type(app_moniker))
+        if app_moniker.objtype != 'app':
+            raise ValueError("EAAItem object must be app, %s found" % app_moniker.objtype)
+        deploy = self.post('mgmt-pop/apps/{applicationId}/deploy'.format(applicationId=app_moniker.uuid))
+        logging.info("ApplicationAPI: deploy app response: %s" % deploy.status_code)
+        if deploy.status_code != 200:
+            logging.error(deploy.text)
 
 
-class Etl(object):
-    """ETL"""
+class EventLogAPI(BaseAPI):
+    """
+    EAA logs, this is using the legacy API
+    """
 
-    def __init__(self, out, api_version='v1'):
-        self._api_ver = api_version
+    #: Pull interval when using the tail mode
+    PULL_INTERVAL_SEC = 15
+    COLLECTION_DELAY_MINUTES = 0
+
+    class EventType(Enum):
+        USER_ACCESS = "access"
+        ADMIN = "admin"
+
+    API = "legacy"
+    ADMINEVENT_API = "adminevents-reports/ops/splunk-query"
+    ACCESSLOG_API = "analytics/ops"
+
+    def __init__(self, config):
+        super(EventLogAPI, self).__init__(config, api=EventLogAPI.API)
         self._content_type_json = {'content-type': 'application/json'}
         self._content_type_form = {'content-type': 'application/x-www-form-urlencoded'}
         self._headers = None
-        self._output = out
-
-    def get_signature(self, access_key_id, secret_access_key):
-        encoding = 'ascii'
-        msg = "%s:%s" % (access_key_id, secret_access_key)
-        signature = hmac.new(
-            key=secret_access_key.encode(encoding),
-            msg=msg.encode(encoding),
-            digestmod=hashlib.sha256).digest()
-        # Base64 encode the signature
-        signature = base64.b64encode(signature)
-        LOG.debug("Signature: %s" % signature.decode(encoding))
-        return signature.decode(encoding)
-
-    def ensure_signature_in_header(self, api_key, secret_key):
-        signature = self.get_signature(access_key_id=api_key, secret_access_key=secret_key)
-        self._headers = {'Authorization': 'Basic %s:%s' % (api_key, signature)}
-        self._headers.update(self._content_type_json)
+        self._output = config.output
+        self.line_count = 0
 
     def get_api_url(self, logtype):
-        if logtype == LOG_TYPE_ADMIN:
-            return ADMINEVENT_API
+        if logtype == self.EventType.ADMIN:
+            return self.ADMINEVENT_API
         else:
-            return ACCESSLOG_API
+            return self.ACCESSLOG_API
 
-    def get_logs(self, drpc_args, logtype=LOG_TYPE_EVENT, output=sys.stdout):
-        global line_count
+    def get_logs(self, drpc_args, logtype=EventType.USER_ACCESS, output=sys.stdout):
+        """
+        Fetch the logs, by default the user access logs.
+        """
+        if not isinstance(logtype, self.EventType):
+            raise ValueError("Unsupported log type %s" % logtype)
+
         scroll_id = None
         try:
             # Fetches the logs for given drpc args
-            u = self.get_api_url(logtype)
-            api_url = u.format(config.base_url, self._api_ver)
-
-            self.ensure_signature_in_header(api_key=config.eaa_api_key, secret_key=config.eaa_api_secret)
-            LOG.debug("request headers: %s" % self._headers)
-            resp = requests.post(
-                api_url,
-                data=drpc_args,
-                headers=self._headers,
-                allow_redirects=False
-            )
-
+            resp = self.post(self.get_api_url(logtype), json=drpc_args)
             if resp.status_code != requests.codes.ok:
-                LOG.error("Invalid API response status code: %s" % resp.status_code)
+                logging.error("Invalid API response status code: %s" % resp.status_code)
                 return None
 
             resj = resp.json()
-            LOG.debug("JSON> %s" % resj)
+            logging.debug("JSON> %s" % json.dumps(resj, indent=2))
 
             if 'message' in resj:
                 # Get msg and scroll_id based on the type of logs
                 # Since it is two different API in the back-end
-                if config.log_type == LOG_TYPE_EVENT:
+                if logtype == self.EventType.USER_ACCESS:
                     msg = resj.get('message')[0][1]
                     scroll_id = msg.get('scroll_id')
-                elif config.log_type == LOG_TYPE_ADMIN:
+                elif logtype == self.EventType.ADMIN:
                     msg = resj.get('message')
                     if 'scroll_id' in msg.get('metadata'):
                         scroll_id = msg.get('metadata').get('scroll_id')
+                else:
+                    raise NotImplementedError("Doesn't support log type %s" % logtype)
 
-                LOG.debug("scroll_id: %s" % scroll_id)
+                logging.debug("scroll_id: %s" % scroll_id)
                 count = 0
 
-                if config.log_type == LOG_TYPE_EVENT:
+                if logtype == self.EventType.USER_ACCESS:
                     for timestamp, response in six.iteritems(msg):
                         try:
                             if not timestamp.isdigit():
-                                LOG.debug("Ignored timestamp '%s': %s" % (timestamp, response))
+                                logging.debug("Ignored timestamp '%s': %s" % (timestamp, response))
                                 continue
-                            LOG.debug("flog is %s" % type(response['flog']).__name__)
-                            LOG.debug("Scanned timestamp: %s" % timestamp)
+                            logging.debug("flog is %s" % type(response['flog']).__name__)
+                            logging.debug("Scanned timestamp: %s" % timestamp)
                             local_time = datetime.fromtimestamp(int(timestamp)/1000)
                             if isinstance(response, dict) and 'flog' in response:
                                 line = "%s\n" % ' '.join([local_time.isoformat(), response['flog']])
-                                self._output.write(line.encode("utf8"))
-                                LOG.debug("### flog ## %s" % response['flog'])
-                                line_count += 1
+                                output.write(line)
+                                logging.debug("### flog ## %s" % response['flog'])
+                                self.line_count += 1
                                 count += 1
                         except Exception:
-                            LOG.exception("Error parsing access log line")
-                elif config.log_type == LOG_TYPE_ADMIN:
+                            logging.exception("Error parsing access log line")
+                elif logtype == self.EventType.ADMIN:
                     for item in msg.get('data'):
                         try:
                             local_time = datetime.fromtimestamp(int(item.get('ts')/1000))
                             line = u"{},{}\n".format(local_time.isoformat(), item.get('splunk_line'))
                             self._output.write(line.encode("utf8"))
-                            line_count += 1
+                            self.line_count += 1
                             count += 1
                         except Exception as e:
-                            LOG.exception('Error parsing admin log line: %s, content: %s' % (e, item.get('splunk_line')))
-
+                            logging.exception('Error parsing admin log line: %s, content: %s' %
+                                              (e, item.get('splunk_line')))
             else:
-                LOG.error('Error: no data(message) in response.')
-                LOG.error(drpc_args)
-                LOG.error(json.dumps(resj))
+                logging.error('Error: no data(message) in response.')
+                logging.error(drpc_args)
+                logging.error(json.dumps(resj))
             resp.close()
-        except Exception as e:
+        except Exception:
             if "resp" in locals():
-                LOG.debug("resp.status_code %s" % resp.status_code)
-                LOG.debug("resp.text %s" % resp.text)
-            LOG.error(drpc_args)
-            LOG.exception("Exception in get_logs")
+                logging.debug("resp.status_code %s" % resp.status_code)
+                logging.debug("resp.text %s" % resp.text)
+            logging.error(drpc_args)
+            logging.exception("Exception in get_logs")
         return scroll_id
+
+    @staticmethod
+    def date_boundaries():
+        # end time in milliseconds, now minus collection delay
+        ets = int(time.mktime(time.localtime()) * 1000 - (EventLogAPI.COLLECTION_DELAY_MINUTES * 60 * 1000))
+        if not config.tail and config.end:
+            ets = config.end * 1000
+        # start time in milliseconds: end time minus poll interval
+        sts = int(ets - (EventLogAPI.PULL_INTERVAL_SEC * 1000))
+        if not config.tail and config.start:
+            sts = config.start * 1000
+        return ets, sts
+
+    def fetch_logs(self, exit_fn, stop_event):
+        """
+        Fetch all logs
+        :param exit_fn: function to call upon SIGTERM and SIGINT
+        """
+
+        log_type = self.EventType(config.log_type)
+        logging.info(log_type)
+        signal.signal(signal.SIGTERM, exit_fn)
+        signal.signal(signal.SIGINT, exit_fn)
+
+        logging.info("PID: %s" % os.getpid())
+        logging.info("Poll interval: %s seconds" % EventLogAPI.PULL_INTERVAL_SEC)
+        try:
+            if self._output is None:
+                out = sys.stdout
+            else:
+                logging.info("Output file: %s" % config.output)
+                out = open(self._output, 'w+')
+            while True:
+                ets, sts = EventLogAPI.date_boundaries()
+                s = time.time()
+                logging.info("Fetching log[%s] from %s to %s..." % (log_type, sts, ets))
+                scroll_id = None
+                while (True):
+                    drpc_args = {
+                        'sts': str(sts),
+                        'ets': str(ets),
+                        'metrics': 'logs',
+                        'es_fields': 'flog',
+                        'limit': '1000',
+                        'sub_metrics': 'scroll',
+                        'source': SOURCE,
+                    }
+                    if scroll_id is not None:
+                        drpc_args.update({'scroll_id': str(scroll_id)})
+                    scroll_id = self.get_logs(drpc_args, log_type, out)
+                    out.flush()
+                    if scroll_id is None:
+                        break
+                if not config.tail:
+                    if not config.batch:
+                        print("# Start: %s" % time.strftime('%m/%d/%Y %H:%M:%S UTC', time.gmtime(sts/1000.)))
+                        print("# End: %s" % time.strftime('%m/%d/%Y %H:%M:%S UTC', time.gmtime(ets/1000.)))
+                        print("# Total: %s event(s)" % self.line_count)
+                    break
+                else:
+                    elapsed = time.time() - s
+                    logging.debug("Now waiting %s seconds..." % (EventLogAPI.PULL_INTERVAL_SEC - elapsed))
+                    stop_event.wait(EventLogAPI.PULL_INTERVAL_SEC - elapsed)
+                    if stop_event.is_set():
+                        break
+        except Exception:
+            logging.exception("General exception while fetching EAA logs")
+        finally:
+            if out is not None and out != sys.stdout:
+                logging.debug("Closing output file...")
+                out.close()
+            logging.info("%s log lines were fetched." % self.line_count)
 
 
 def log_level():
@@ -315,99 +699,50 @@ def log_level():
         return logging.ERROR
 
 
-def date_boundaries():
-    # end time in milliseconds, now minus collection delay
-    ets = int(time.mktime(time.localtime()) * 1000 - (collection_delay_minutes * 60 * 1000))
-    if not config.tail and config.end:
-        ets = config.end * 1000
-    # start time in milliseconds: end time minus poll interval
-    sts = int(ets - (poll_interval_sec * 1000))
-    if not config.tail and config.start:
-        sts = config.start * 1000
-    return ets, sts
-
-
 def exit_gracefully(signum, frame):
-    LOG.info("Stop due to SIGTERM or SIGINT signal received")
+    logging.info("Stop due to SIGTERM or SIGINT signal received")
     stop_event.set()
-
-
-def fetch_logs():
-    signal.signal(signal.SIGTERM, exit_gracefully)
-    signal.signal(signal.SIGINT, exit_gracefully)
-
-    LOG.info("PID: %s" % os.getpid())
-    LOG.info("Poll interval: %s seconds" % poll_interval_sec)
-
-    if config.output is None:
-        out = sys.stdout
-    else:
-        LOG.info("Output file: %s" % config.output)
-        out = open(config.output, 'w+')
-
-    etl = Etl(out)
-
-    try:
-        while True:
-            ets, sts = date_boundaries()
-            s = time.time()
-            LOG.info("Fetching log[%s] from %s to %s..." % (config.log_type, sts, ets))
-            if config.log_type in (LOG_TYPE_ADMIN, LOG_TYPE_EVENT):
-                # Use scroll paging
-                drpc_args = '{"sts":'+ str(sts) + ',"ets":'+ str(ets) + \
-                            ',"metrics":"logs","es_fields":"flog","limit":"1000","sub_metrics":"scroll","source": "%s"}' % SOURCE
-                scroll_id = etl.get_logs(drpc_args, config.log_type, out)
-                # Check for scroll_id to issue another request
-                while (scroll_id != None):
-                    drpc_args = '{"sts":'+ str(sts) +',"ets":'+ str(ets) + \
-                    ',"metrics":"logs","es_fields":"flog","limit":"1000","sub_metrics":"scroll","source":"' + SOURCE + '","scroll_id":"'+scroll_id+'"}'
-                    scroll_id = etl.get_logs(drpc_args, config.log_type, out)
-                out.flush()
-            else:
-                raise Exception("Not supported log type: %s" % config.type)
-            if not config.tail:
-                break
-            else:
-                elapsed = time.time() - s
-                LOG.debug("Now waiting %s seconds..." % (poll_interval_sec - elapsed))
-                stop_event.wait(poll_interval_sec - elapsed)
-                if stop_event.is_set():
-                    break
-    except Exception:
-        LOG.exception("General exception")
-    finally:
-        if out is not None and out != sys.stdout:
-            LOG.debug("Closing output file...")
-            out.close()
-        LOG.info("%s log lines were fetched." % line_count)
 
 
 if __name__ == "__main__":
 
-    logging.basicConfig(filename=log_file, level=log_level(),
-        format='%(asctime)s [%(levelname)s] %(threadName)s %(message)s')
+    logging.basicConfig(filename=log_file, level=log_level(), format=LOG_FMT)
+    logging.debug("Python %s" % platform.python_version())
 
-    LOG.debug("Python %s" % platform.python_version())
-
-    if config.command == "version":
-        print(__version__)
-    elif config.command == "log":
-        fetch_logs()
-    elif config.command == "search":
-        # print('Search for %s...' % config.pattern)
-        s = SearchAPI()
-        s.search_app(config.pattern)
-    elif config.command == "dir":
-        if config.action is None or config.action == "list":
-            d = DirectoryAPI(None)
-            d.list_directories()
-        else:
-            d = DirectoryAPI(config.directory_id)
-            if config.action == "addgroup":
-                d.addgroup(config.group, config.dn)
-            elif config.action == "addovlgroup":
-                d.addoverlaygroup(config.group)
+    try:
+        if config.command == "version":
+            print(__version__)
+        elif config.command == "log":
+            events = EventLogAPI(config)
+            events.fetch_logs(exit_gracefully, stop_event)
+        elif config.command == "search":
+            s = SearchAPI(config)
+            s.search_app(config.pattern)
+        elif config.command in ("dir", "d"):
+            if config.action is None or config.action == "list":
+                directory_id = None
+                if hasattr(config, 'directory_id'):
+                    directory_id = config.directory_id
+                d = DirectoryAPI(config, directory_id)
+                d.list_directories()
             else:
-                raise Exception("Unsupported directory action: %s" % config.action)
+                d = DirectoryAPI(config, config.directory_id)
+                if config.action == "sync":
+                    d.synchronize()
+                elif config.action == "addgroup":
+                    d.addgroup(config.group)
+                elif config.action == "addovlgroup":
+                    d.addoverlaygroup(config.group)
+                else:
+                    raise Exception("Unsupported directory action: %s" % config.action)
+        elif config.command == "app":
+            a = ApplicationAPI(config)
+            a.process_command()
+    except KeyboardInterrupt:
+        print("cli-eaa interrupted.")
+        sys.exit(1)
+    except Exception:
+        logging.exception("cli-eaa general exception")
+        sys.exit(200)
 
 # end of file
