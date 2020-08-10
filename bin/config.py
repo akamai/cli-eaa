@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 class EdgeGridConfig():
 
-    parser = argparse.ArgumentParser(description='Process command line options.')
+    parser = argparse.ArgumentParser(prog="akamai eaa", description='Process command line options.')
 
     def __init__(self, config_values, configuration, flags=None):
         parser = self.parser
