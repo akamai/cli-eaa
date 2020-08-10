@@ -2,11 +2,13 @@ import sys
 import six
 from io import open
 
+
 def force_unicode(s):
     if six.PY2:
         return unicode(s)
     else:
         return s
+
 
 def argument_tolist(arg):
     for item in arg:
