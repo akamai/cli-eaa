@@ -39,12 +39,10 @@ import re
 
 # 3rd party
 import six
-from colorama import Style
 from akamai.edgegrid import EdgeGridAuth, EdgeRc
-
 from config import EdgeGridConfig
 
-__version__ = '0.2.0'
+__version__ = '0.2.1'
 
 # If all parameters are set already, use them.  Otherwise
 # use the config
@@ -56,6 +54,38 @@ LOG_FMT = '%(asctime)s [%(levelname)s] %(threadName)s %(message)s'
 
 log_file = None
 stop_event = Event()
+
+
+class cli:
+    """
+    Utility methods for the CLI.
+    """
+
+    @staticmethod
+    def print(s):
+        sys.stdout.write("%s\n" % s)
+
+    @staticmethod
+    def header(s):
+        sys.stderr.write("%s\n" % s)
+
+    @staticmethod
+    def footer(s):
+        sys.stderr.write("%s\n" % s)
+
+    @staticmethod
+    def log_level():
+        if config.debug:
+            return logging.DEBUG
+        elif config.verbose:
+            return logging.INFO
+        else:
+            return logging.ERROR
+
+    @staticmethod
+    def exit_gracefully(signum, frame):
+        logging.info("Stop due to SIGTERM or SIGINT signal received")
+        stop_event.set()
 
 
 class EAALegacyAuth(requests.auth.AuthBase):
@@ -219,7 +249,7 @@ class SearchAPI(BaseAPI):
                         fnmatch.fnmatch(a.get('cname') or "", "*%s*" % search_pattern)
                     )
                 ):
-                    print('app://%s,%s,%s,%s,%s,%s' % (
+                    cli.print('app://%s,%s,%s,%s,%s,%s' % (
                         a.get('uuid_url'),
                         ApplicationAPI.Type(a.get('app_type')).name,
                         a.get('name'),
@@ -230,9 +260,9 @@ class SearchAPI(BaseAPI):
             # Footer
             if not config.batch:
                 if app_found != app_count:
-                    print("Found %s app(s), total %s app(s)" % (app_found, app_count))
+                    cli.footer("Found %s app(s), total %s app(s)" % (app_found, app_count))
                 else:
-                    print("%s app(s)" % app_count)
+                    cli.footer("%s app(s)" % app_count)
 
 
 class DirectoryAPI(BaseAPI):
@@ -286,11 +316,11 @@ class DirectoryAPI(BaseAPI):
         if self._directory_id:
             if self._config.users:
                 if self._config.search_pattern and not self._config.batch:
-                    print("# list users matching %s in %s" % (self._config.search_pattern, self._directory_id))
+                    cli.header("# list users matching %s in %s" % (self._config.search_pattern, self._directory_id))
                 self.list_users()
             elif self._config.groups:
                 if self._config.search_pattern and not self._config.batch:
-                    print("# list groups matching %s" % self._config.search_pattern)
+                    cli.header("# list groups matching %s" % self._config.search_pattern)
                 self.list_groups()
         else:
             resp = self.get("mgmt-pop/directories")
@@ -299,14 +329,21 @@ class DirectoryAPI(BaseAPI):
             resj = resp.json()
             # print(resj)
             if not self._config.batch:
-                print("#moniker,directory_name,status,user_count")
-            for d in resj.get("objects"):
-                print("dir://{dirid},{name},{status},{user_count}".format(
+                cli.header("#dir_id,dir_name,status,user_count")
+            total_dir = 0
+            for total_dir, d in enumerate(resj.get("objects"), start=1):
+                cli.print("dir://{dirid},{name},{status},{user_count}".format(
                     dirid=d.get("uuid_url"),
                     name=d.get("name"),
                     status=d.get("directory_status"),
                     user_count=d.get("user_count"))
                 )
+            if total_dir == 0:
+                cli.footer("No EAA Directory configuration found.")
+            elif total_dir == 1:
+                cli.footer("One EAA Directory configuration found.")
+            else:
+                cli.footer("%d EAA Directory configurations found." % total_dir)
 
     def delgroup(self, group_id):
         raise NotImplementedError("Group deletion is not implemented")
@@ -325,7 +362,7 @@ class DirectoryAPI(BaseAPI):
         if resp.status_code != 200:
             logging.error("Error adding group to directory %s" % self._directory_id)
         else:
-            print("Overlay group %s added to directory %s" % (groupname, self._directory_id))
+            cli.footer("Overlay group %s added to directory %s" % (groupname, self._directory_id))
 
     @staticmethod
     def groupname_from_dn(dn):
@@ -387,7 +424,7 @@ class ApplicationAPI(BaseAPI):
         ETP = 5
 
     def __init__(self, config):
-        super(ApplicationAPI, self).__init__(config, api="open")
+        super(ApplicationAPI, self).__init__(config, api=BaseAPI.API_Version.OpenAPI)
 
     def process_command(self):
         """
@@ -524,12 +561,11 @@ class EventLogAPI(BaseAPI):
         USER_ACCESS = "access"
         ADMIN = "admin"
 
-    API = "legacy"
     ADMINEVENT_API = "adminevents-reports/ops/splunk-query"
     ACCESSLOG_API = "analytics/ops"
 
     def __init__(self, config):
-        super(EventLogAPI, self).__init__(config, api=EventLogAPI.API)
+        super(EventLogAPI, self).__init__(config, api=BaseAPI.API_Version.Legacy)
         self._content_type_json = {'content-type': 'application/json'}
         self._content_type_form = {'content-type': 'application/x-www-form-urlencoded'}
         self._headers = None
@@ -690,32 +726,44 @@ class EventLogAPI(BaseAPI):
             logging.info("%s log lines were fetched." % self.line_count)
 
 
-def log_level():
-    if config.debug:
-        return logging.DEBUG
-    elif config.verbose:
-        return logging.INFO
-    else:
-        return logging.ERROR
+class ConnectorAPI(BaseAPI):
 
+    def __init__(self, config):
+        super(ConnectorAPI, self).__init__(config, api=BaseAPI.API_Version.OpenAPI)
 
-def exit_gracefully(signum, frame):
-    logging.info("Stop due to SIGTERM or SIGINT signal received")
-    stop_event.set()
+    def list(self):
+        url_params = {'expand': 'true', 'limit': 0}
+        data = self.get('mgmt-pop/agents', params=url_params)
+        connectors = data.json()
+        total_con = 0
+        cli.print('#Connector-id,name,reachable,status,version,privateip,publicip,debug')
+        for total_con, c in enumerate(connectors.get('objects', {}), start=1):
+            cli.print("con://{con_id},{name},{reachable},{status},{version},{privateip},{publicip},{debugchan}".format(
+                con_id=c.get('uuid_url'),
+                name=c.get('name'),
+                reachable=c.get('reach'),
+                status=c.get('status'),
+                version=c.get('agent_version').replace('AGENT-', '').strip(),
+                privateip=c.get('private_ip'),
+                publicip=c.get('private_ip'),
+                debugchan='Y' if c.get('debug_channel_permitted') else 'N'
+            ))
+        cli.footer("Total %s connector(s)" % total_con)
+
 
 
 if __name__ == "__main__":
 
-    logging.basicConfig(filename=log_file, level=log_level(), format=LOG_FMT)
+    logging.basicConfig(filename=log_file, level=cli.log_level(), format=LOG_FMT)
     logging.debug("Python %s" % platform.python_version())
 
     try:
         if config.command == "version":
             print(__version__)
-        elif config.command == "log":
+        elif config.command in ("log", "l"):
             events = EventLogAPI(config)
-            events.fetch_logs(exit_gracefully, stop_event)
-        elif config.command == "search":
+            events.fetch_logs(cli.exit_gracefully, stop_event)
+        elif config.command in ("search", "s"):
             s = SearchAPI(config)
             s.search_app(config.pattern)
         elif config.command in ("dir", "d"):
@@ -735,12 +783,18 @@ if __name__ == "__main__":
                     d.addoverlaygroup(config.group)
                 else:
                     raise Exception("Unsupported directory action: %s" % config.action)
-        elif config.command == "app":
+        elif config.command in ("app", "a"):
             a = ApplicationAPI(config)
             a.process_command()
+        elif config.command in ("connector", "c"):
+            c = ConnectorAPI(config)
+            c.list()
+        else:
+            config.parser.print_help()
+            sys.exit(1)
     except KeyboardInterrupt:
         print("cli-eaa interrupted.")
-        sys.exit(1)
+        sys.exit(2)
     except Exception:
         logging.exception("cli-eaa general exception")
         sys.exit(200)

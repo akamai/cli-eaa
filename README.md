@@ -11,6 +11,7 @@
   - [EAA event logs](#eaa-event-logs)
   - [Applications](#applications)
   - [Directory operations](#directory-operations)
+  - [Connectors](#connectors)
 - [Troubleshooting](#troubleshooting)
 
 ## Introduction
@@ -163,12 +164,12 @@ Buckle up, we use `jq` and `grep`.\
 Note: we use `-b` to avoid the extra info the CLI spills out, like the footer.
 
 ```
-$ akamai eaa -b search | ./akamai-eaa app - | jq -j '.name, ": ", (.agents[]|.name, " "), "\n"'|grep xyz
+$ akamai eaa -b search | akamai eaa app - | jq -j '.name, ": ", (.agents[]|.name, " "), "\n"'|grep xyz
 ```
 
 View groups associated with a particular application
 ```
-./akamai-eaa app app://FWbUCfpvRKaSOX1rl0u55Q viewgroups
+akamai eaa app app://FWbUCfpvRKaSOX1rl0u55Q viewgroups
 ```
 
 You can pipe command as well, example to deploy all the application matching "tunnel"
@@ -197,6 +198,24 @@ Synchronize directory 2Kz2YqmgSpqT_IJq9BLkWg
 Directory 2Kz2YqmgSpqT_IJq9BLkWg synchronization requested.
 ```
 
+### Connectors
+
+Here with the shortcut 'c':
+
+```
+$ akamai eaa c
+#Connector-id,name,reachable,status,version,privateip,publicip,debug
+con://cht3_GEjQWyMW9LEk7KQfg,demo-v2-con-1-amer,1,1,4.4.0-2765,10.1.4.206,10.1.4.206,Y
+con://Wy0Y6FrwQ66yQzLBAInC4w,demo-v2-con-2-amer,1,1,4.4.0-2765,10.1.4.172,10.1.4.172,Y
+con://dK0f1UvhR7i8-RByABDXaQ,demo-v2-con-4-emea,1,1,4.4.0-2765,192.168.1.90,192.168.1.90,N
+con://Ihmf51dASo-R1P37hzaP3Q,demo-v2-con-3-emea,1,1,4.4.0-2765,192.168.1.235,192.168.1.235,N
+con://XiCmu80xQcSWnaeQcvH8Vg,demo-v2-con-5-apj,1,1,4.4.0-2765,192.168.1.228,192.168.1.228,Y
+con://pkGjL5OgSjyHoymMguvp9Q,demo-v2-con-6-apj,1,1,4.4.0-2765,192.168.1.144,192.168.1.144,Y
+con://e_0nShZBQ7esNAC3ZEkhSQ,demo-v2-con-3-amer,1,1,4.4.0-2765,10.1.4.83,10.1.4.83,Y
+con://OEe9o-n2S_aMeZpLxgwG0A,tmelab-sfo,1,1,4.4.0-2765,192.168.2.101,192.168.2.101,Y
+Total 8 connector(s)
+```
+
 ## Troubleshooting
 
 If the command is not working properly, you can increase the level of verbosity using:
@@ -204,4 +223,4 @@ If the command is not working properly, you can increase the level of verbosity 
 - `-v` or `--verbose` to trace the main steps
 - `-d` or `--debug` to get full visibility, include API HTTP headers
 
-The messages are printed on _stderr_ so you can safely redirect stdout to a file or using the `--output` option.
+The messages are printed on _stderr_ so you can safely redirect stdout to a file or use the `--output` option.

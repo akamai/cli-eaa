@@ -41,7 +41,7 @@ class EdgeGridConfig():
 
         subparsers = parser.add_subparsers(dest='command', help='Main command')
 
-        event_parser = subparsers.add_parser("log", aliases=["l"], help="Fetch last log lines")
+        event_parser = subparsers.add_parser("log", aliases=["l"], help="Fetch log events")
         event_parser.add_argument('log_type', nargs='?', default="access",
                                   choices=['access', 'admin'], help="Log line type")
         event_parser.add_argument('--start', '-s', type=int, help="Start datetime (EPOCH)")
@@ -51,7 +51,7 @@ class EdgeGridConfig():
                                   help="""Do not stop when most recent log is reached,
                                   but rather to wait for additional data to be appended to the input.""")
 
-        search_parser = subparsers.add_parser('search', aliases=["l"], help='Search in EAA configurations')
+        search_parser = subparsers.add_parser('search', aliases=["s"], help='Search in EAA Application configurations')
         search_parser.add_argument('pattern', nargs='?')
 
         dir_parser = subparsers.add_parser('dir', aliases=['d'], help='Manage EAA directories')
@@ -94,6 +94,8 @@ class EdgeGridConfig():
         subsub.add_parser("delgroup", help="Remove group from application, appgroup ID must provided")
 
         # choices=['deploy', 'add_dnsexception', 'del_dnsexception', 'save']
+
+        con_parser = subparsers.add_parser('connector', aliases=["c"], help='Manage EAA connectors')
 
         subparsers.add_parser('version', help='Display cli-eaa module version')
 
