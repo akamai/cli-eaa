@@ -20,21 +20,16 @@ import os
 import argparse
 import logging
 
-if sys.version_info[0] >= 3:
-    # python3
-    from configparser import ConfigParser
-    import http.client as http_client
-else:
-    # python2.7
-    from ConfigParser import ConfigParser
-    import httplib as http_client
+from configparser import ConfigParser
+import http.client as http_client
 
 logger = logging.getLogger(__name__)
 
 
 class EdgeGridConfig():
 
-    parser = argparse.ArgumentParser(prog="akamai eaa", description='Process command line options.')
+    parser = argparse.ArgumentParser(prog="akamai eaa",
+                                     description='Process command line options.')
 
     def __init__(self, config_values, configuration, flags=None):
         parser = self.parser
@@ -104,9 +99,9 @@ class EdgeGridConfig():
         parser.add_argument('--verbose', '-v', default=False, action='count', help=' Verbose mode')
         parser.add_argument('--debug', '-d', default=False, action='count', help=' Debug mode (prints HTTP headers)')
         parser.add_argument('--edgerc', '-e', default='~/.edgerc', metavar='credentials_file',
-                            help=' Location of the credentials file (default is ~/.edgerc)')
+                            help=' Location of the credentials file (default is %s)' % os.path.expanduser("~/.edgerc"))
         parser.add_argument('--section', '-c', default='default', metavar='credentials_file_section', action='store',
-                            help=' Credentials file Section\'s name to use')
+                            help=' Credentials file Section\'s name to use (\'default\' if not specified).')
 
         if flags:
             for argument in flags.keys():

@@ -14,8 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Load Akamai Enteprise Application Access access logs
-# Original author: <androcho@akamai.com> based on Splunk app
+"""
+cli-eaa
+:author: Antoine Drochon <androcho@akamai.com>
+"""
 
 from __future__ import print_function
 import os
@@ -205,7 +207,7 @@ class BaseAPI(object):
         logging.info("API URL: %s" % url)
         response = self._session.get(url, params=self.build_params(params))
         logging.info("BaseAPI: GET response is HTTP %s" % response.status_code)
-        if response.status_code != 200:
+        if response.status_code != requests.status_codes.codes.ok:
             logging.info("BaseAPI: GET response body: %s" % response.text)
         return response
 
@@ -412,7 +414,7 @@ class DirectoryAPI(BaseAPI):
             if group:
                 logging.debug("Adding group %s" % (scanned_dn))
                 resp = self.post(url, json={"name": group, "dn": scanned_dn})
-                if resp.status_code != 200:
+                if resp.status_code != requests.status_codes.codes.ok:
                     logging.error(resp.status_code)
             else:
                 logging.warn("Invalid DN: %s" % scanned_dn)
@@ -576,11 +578,12 @@ class ApplicationAPI(BaseAPI):
 class EventLogAPI(BaseAPI):
     """
     EAA logs, this is using the legacy API
+    Based on Splunk app
     """
 
     #: Pull interval when using the tail mode
     PULL_INTERVAL_SEC = 15
-    COLLECTION_DELAY_MINUTES = 0
+    COLLECTION_DELAY_MINUTES = 1
 
     class EventType(Enum):
         USER_ACCESS = "access"
@@ -763,8 +766,10 @@ class ConnectorAPI(BaseAPI):
         total_con = 0
         logging.info(json.dumps(data.json(), indent=4))
         cli.print('#Connector-id,name,reachable,status,version,privateip,publicip,debug')
+        format_line = "{scheme}{con_id},{name},{reachable},{status},{version},{privateip},{publicip},{debugchan}"
         for total_con, c in enumerate(connectors.get('objects', {}), start=1):
-            cli.print("{scheme}{con_id},{name},{reachable},{status},{version},{privateip},{publicip},{debugchan}".format(
+
+            cli.print(format_line.format(
                 scheme=EAAItem.Type.Connector.scheme,
                 con_id=c.get('uuid_url'),
                 name=c.get('name'),

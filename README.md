@@ -2,6 +2,7 @@
 
 ## Table of contents<!-- omit in toc -->
 
+- [Screenshot](#screenshot)
 - [Introduction](#introduction)
 - [Key features](#key-features)
 - [Installation](#installation)
@@ -14,6 +15,10 @@
   - [Connectors](#connectors)
 - [Troubleshooting](#troubleshooting)
 
+## Screenshot
+
+<img src="docs/cli-eaa-terminal@2x.png" width="40%" />
+
 ## Introduction
 
 [Enterprise Application Access (EAA)](https://www.akamai.com/us/en/products/security/enterprise-application-access.jsp) comes with a full suite of APIs. 
@@ -25,7 +30,7 @@ This can be helpful if you plan to consume EAA logs into your favorite SIEM, or 
 
 ## Key features
 
-- View logs
+- Event logs
   - View access logs (identification, application activity)
   - View admin logs (admin portal access, config change, deployment, deletion)
   - Send the logs to a file
@@ -37,6 +42,8 @@ This can be helpful if you plan to consume EAA logs into your favorite SIEM, or 
 - Directory
   - Create group and group overlay
   - Synchronize with your LDAP or Active Directory
+- Connectors
+  - List all connectors including the reachability status
 
 ## Installation
 
@@ -56,7 +63,12 @@ And voilà!
 
 The command takes care of all the dependencies. 
 
-This CLI module uses Python in the background.
+To check your cli-eaa version with the `version` command
+
+```
+$ akamai eaa version
+0.2.2
+```
 
 ### Configuration file
 
@@ -169,13 +181,13 @@ $ akamai eaa -b search | akamai eaa app - | jq -j '.name, ": ", (.agents[]|.name
 
 View groups associated with a particular application
 ```
-akamai eaa app app://FWbUCfpvRKaSOX1rl0u55Q viewgroups
+$ akamai eaa app app://FWbUCfpvRKaSOX1rl0u55Q viewgroups
 ```
 
 You can pipe command as well, example to deploy all the application matching "tunnel"
 
 ```
-$ akamai eaa -b search bastion|akamai eaa app - deploy
+$ akamai eaa -b search bastion | akamai eaa app - deploy
 ```
 
 ### Directory operations
@@ -200,20 +212,22 @@ Directory 2Kz2YqmgSpqT_IJq9BLkWg synchronization requested.
 
 ### Connectors
 
-Here with the shortcut 'c':
+Here with the shortcut `c` and the `column` command available in most POSIX environment.
+When piping, the extra information written on *stderr* so they appear seperately.
 
 ```
-$ akamai eaa c
-#Connector-id,name,reachable,status,version,privateip,publicip,debug
-con://cht3_GEjQWyMW9LEk7KQfg,demo-v2-con-1-amer,1,1,4.4.0-2765,10.1.4.206,10.1.4.206,Y
-con://Wy0Y6FrwQ66yQzLBAInC4w,demo-v2-con-2-amer,1,1,4.4.0-2765,10.1.4.172,10.1.4.172,Y
-con://dK0f1UvhR7i8-RByABDXaQ,demo-v2-con-4-emea,1,1,4.4.0-2765,192.168.1.90,192.168.1.90,N
-con://Ihmf51dASo-R1P37hzaP3Q,demo-v2-con-3-emea,1,1,4.4.0-2765,192.168.1.235,192.168.1.235,N
-con://XiCmu80xQcSWnaeQcvH8Vg,demo-v2-con-5-apj,1,1,4.4.0-2765,192.168.1.228,192.168.1.228,Y
-con://pkGjL5OgSjyHoymMguvp9Q,demo-v2-con-6-apj,1,1,4.4.0-2765,192.168.1.144,192.168.1.144,Y
-con://e_0nShZBQ7esNAC3ZEkhSQ,demo-v2-con-3-amer,1,1,4.4.0-2765,10.1.4.83,10.1.4.83,Y
-con://OEe9o-n2S_aMeZpLxgwG0A,tmelab-sfo,1,1,4.4.0-2765,192.168.2.101,192.168.2.101,Y
-Total 8 connector(s)
+$ akamai eaa c | column -t -s,
+Total 9 connector(s)
+#Connector-id                 name                reachable  status  version     privateip      publicip        debug
+con://cht3_GEjQWyMW9LEk7KQfg  demo-v2-con-1-amer  1          1       4.4.0-2765  10.1.4.206     12.123.123.123  Y
+con://Wy0Y6FrwQ66yQzLBAInC4w  demo-v2-con-2-amer  1          1       4.4.0-2765  10.1.4.172     12.123.123.123  Y
+con://dK0f1UvhR7i8-RByABDXaQ  demo-v2-con-4-emea  1          1       4.4.0-2765  192.168.1.90   12.123.12.12    N
+con://Ihmf51dASo-R1P37hzaP3Q  demo-v2-con-3-emea  1          1       4.4.0-2765  192.168.1.235  12.123.12.12    N
+con://XiCmu80xQcSWnaeQcvH8Vg  demo-v2-con-5-apj   1          1       4.4.0-2765  192.168.1.228  12.123.123.12   Y
+con://pkGjL5OgSjyHoymMguvp9Q  demo-v2-con-6-apj   1          1       4.4.0-2765  192.168.1.144  12.123.123.12   Y
+con://NAWSlptPSXOjq-bk2-EQPw  demo-v2-con-10-rus  1          1       4.4.0-2765  10.3.0.101     12.123.123.12   Y
+con://e_0nShZBQ7esNAC3ZEkhSQ  demo-v2-con-3-amer  1          1       4.4.0-2765  10.1.4.83      12.123.123.123  Y
+con://OEe9o-n2S_aMeZpLxgwG0A  tmelab-sfo          1          1       4.4.0-2765  192.168.2.101  12.123.123.12   Y
 ```
 
 ## Troubleshooting
