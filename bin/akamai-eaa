@@ -120,19 +120,36 @@ class EAAItem(object):
     """
     Representation of an EAA object.
     """
-    SEP = '://'
+    _SEP = '://'
+
+    class Type(Enum):
+
+        Connector = "con"
+        Application = "app"
+        ApplicationGroupAssociation = "appgrp"
+        Group = "group"
+        User = "user"
+        Directory = "dir"
+
+        @property
+        def scheme(self):
+            "Full prefix: object://."
+            return "%s%s" % (self.value, EAAItem._SEP)
 
     def __init__(self, obj_url):
         if not isinstance(obj_url, six.string_types):
             raise TypeError('obj_url must be a string')
-        if EAAItem.SEP not in obj_url:
+        if EAAItem._SEP not in obj_url:
             raise EAAInvalidMoniker('Invalid EAA Object URL %s' % obj_url)
-        scanned_type, scanned_uuid = obj_url.split(EAAItem.SEP)
-        self.objtype = scanned_type
+        scanned_type, scanned_uuid = obj_url.split(EAAItem._SEP)
+        if scanned_type in EAAItem.Type:
+            self.objtype = EAAItem.Type[scanned_type]
+        else:
+            ValueError('Invalid type %s' % scanned_type)
         self.uuid = scanned_uuid
 
     def __repr__(self):
-        return self.objtype + EAAItem.SEP + self.uuid
+        return self.objtype.scheme + self.uuid
 
     def __str__(self):
         return self.__repr__()
@@ -249,13 +266,16 @@ class SearchAPI(BaseAPI):
                         fnmatch.fnmatch(a.get('cname') or "", "*%s*" % search_pattern)
                     )
                 ):
-                    cli.print('app://%s,%s,%s,%s,%s,%s' % (
-                        a.get('uuid_url'),
-                        ApplicationAPI.Type(a.get('app_type')).name,
-                        a.get('name'),
-                        a.get('host'),
-                        a.get('cname'),
-                        ApplicationAPI.Status(a.get('app_status')).name))
+                    cli.print('{scheme}{app_id},{app_type},{name},{host},{cname},{status},{reach}'.format(
+                        scheme=EAAItem.Type.Application.scheme,
+                        app_id=a.get('uuid_url'),
+                        app_type=ApplicationAPI.Type(a.get('app_type')).name,
+                        name=a.get('name'),
+                        host=a.get('host'),
+                        cname=a.get('cname'),
+                        status=ApplicationAPI.Status(a.get('app_status')).name,
+                        reach='Y' if a.get('resource_status', {}).get('host_reachable') else 'F')
+                    )
                     app_found += 1
             # Footer
             if not config.batch:
@@ -293,7 +313,8 @@ class DirectoryAPI(BaseAPI):
         resp = self.get(url, params=url_params)
         resj = resp.json()
         for u in resj.get('objects'):
-            print('group://{uuid},{name}'.format(
+            print('{scheme}{uuid},{name}'.format(
+                scheme=EAAItem.Type.Group.scheme,
                 uuid=u.get('uuid_url'),
                 name=u.get('name')
             ))
@@ -306,7 +327,8 @@ class DirectoryAPI(BaseAPI):
         resp = self.get(url, params=url_params)
         resj = resp.json()
         for u in resj.get('objects'):
-            print("user://{uuid},{fn},{ln}".format(
+            print("{scheme}{uuid},{fn},{ln}".format(
+                scheme=EAAItem.Type.User.scheme,
                 uuid=u.get('uuid_url'),
                 fn=u.get('first_name'),
                 ln=u.get('last_name')
@@ -332,7 +354,8 @@ class DirectoryAPI(BaseAPI):
                 cli.header("#dir_id,dir_name,status,user_count")
             total_dir = 0
             for total_dir, d in enumerate(resj.get("objects"), start=1):
-                cli.print("dir://{dirid},{name},{status},{user_count}".format(
+                cli.print("{scheme}{dirid},{name},{status},{user_count}".format(
+                    scheme=EAAItem.Type.Directory.scheme,
                     dirid=d.get("uuid_url"),
                     name=d.get("name"),
                     status=d.get("directory_status"),
@@ -440,9 +463,9 @@ class ApplicationAPI(BaseAPI):
                     continue
                 try:
                     scanned_obj = EAAItem(scanned_items[0])
-                    if scanned_obj.objtype == 'app':
+                    if scanned_obj.objtype == EAAItem.Type.Application:
                         applications.append(scanned_obj)
-                    elif scanned_obj.objtype == 'appgrp':
+                    elif scanned_obj.objtype == EAAItem.Type.ApplicationGroupAssociation:
                         appgroups.append(scanned_obj)
                 except EAAInvalidMoniker:
                     logging.warning("Invalid application moniker: %s" % scanned_items[0])
@@ -486,12 +509,14 @@ class ApplicationAPI(BaseAPI):
 #        print("RAW DATA: %s" % result.json())
         allowed_groups = result.json().get('objects')
         if not self._config.batch:
-            print("# Allowed Groups to access app %s" % app_moniker)
-            print("# appgroup_id,group_id,group_name,dir_name,mfa")
+            cli.header("# Allowed Groups to access app %s" % app_moniker)
+            cli.header("# appgroup_id,group_id,group_name,dir_name,mfa")
         for count, group in enumerate(allowed_groups, start=1):
             association = group.get('resource_uri', {}).get('href')
-            print("appgrp://{appgroup_id},grp://{group_id},{name},{dir_name},{mfa}".format(
+            cli.print("{prefix1}{appgroup_id},{prefix2}{group_id},{name},{dir_name},{mfa}".format(
+                prefix1=EAAItem.Type.ApplicationGroupAssociation.scheme,
                 appgroup_id=association.split('/')[-1],
+                prefix2=EAAItem.Type.Group.scheme,
                 group_id=group.get('group').get('group_uuid_url'),
                 name=group.get('group').get('name'),
                 dir_name=group.get('group').get('dir_name'),
@@ -540,8 +565,8 @@ class ApplicationAPI(BaseAPI):
         """
         if not isinstance(app_moniker, EAAItem):
             raise TypeError("Deploy expect and EAAItem, %s provided" % type(app_moniker))
-        if app_moniker.objtype != 'app':
-            raise ValueError("EAAItem object must be app, %s found" % app_moniker.objtype)
+        if app_moniker.objtype != EAAItem.Type.Application:
+            raise ValueError("EAAItem object must be app, %s found" % app_moniker.objtype.value)
         deploy = self.post('mgmt-pop/apps/{applicationId}/deploy'.format(applicationId=app_moniker.uuid))
         logging.info("ApplicationAPI: deploy app response: %s" % deploy.status_code)
         if deploy.status_code != 200:
@@ -736,16 +761,18 @@ class ConnectorAPI(BaseAPI):
         data = self.get('mgmt-pop/agents', params=url_params)
         connectors = data.json()
         total_con = 0
+        logging.info(json.dumps(data.json(), indent=4))
         cli.print('#Connector-id,name,reachable,status,version,privateip,publicip,debug')
         for total_con, c in enumerate(connectors.get('objects', {}), start=1):
-            cli.print("con://{con_id},{name},{reachable},{status},{version},{privateip},{publicip},{debugchan}".format(
+            cli.print("{scheme}{con_id},{name},{reachable},{status},{version},{privateip},{publicip},{debugchan}".format(
+                scheme=EAAItem.Type.Connector.scheme,
                 con_id=c.get('uuid_url'),
                 name=c.get('name'),
                 reachable=c.get('reach'),
                 status=c.get('status'),
                 version=c.get('agent_version').replace('AGENT-', '').strip(),
                 privateip=c.get('private_ip'),
-                publicip=c.get('private_ip'),
+                publicip=c.get('public_ip'),
                 debugchan='Y' if c.get('debug_channel_permitted') else 'N'
             ))
         cli.footer("Total %s connector(s)" % total_con)
