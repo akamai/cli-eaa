@@ -44,7 +44,7 @@ import six
 from akamai.edgegrid import EdgeGridAuth, EdgeRc
 from config import EdgeGridConfig
 
-__version__ = '0.2.1'
+__version__ = '0.2.2'
 
 # If all parameters are set already, use them.  Otherwise
 # use the config
@@ -138,13 +138,17 @@ class EAAItem(object):
             "Full prefix: object://."
             return "%s%s" % (self.value, EAAItem._SEP)
 
+        @classmethod
+        def has_value(cls, value):
+            return value in cls.__members__.items()
+
     def __init__(self, obj_url):
         if not isinstance(obj_url, six.string_types):
             raise TypeError('obj_url must be a string')
         if EAAItem._SEP not in obj_url:
             raise EAAInvalidMoniker('Invalid EAA Object URL %s' % obj_url)
         scanned_type, scanned_uuid = obj_url.split(EAAItem._SEP)
-        if scanned_type in EAAItem.Type:
+        if EAAItem.Type.has_value(scanned_type):
             self.objtype = EAAItem.Type[scanned_type]
         else:
             ValueError('Invalid type %s' % scanned_type)
@@ -192,19 +196,18 @@ class BaseAPI(object):
         logging.info("Initialized with base_url %s" % self._baseurl)
 
     def build_params(self, params=None):
-        default_params = {}
+        final_params = {}
         if hasattr(self._config, 'contract_id') and self._config.contract_id:
-            default_params.update({'contractId': self._config.contract_id})
+            final_params.update({'contractId': self._config.contract_id})
         if isinstance(params, dict):
-            default_params.update(params)
-        return default_params
+            final_params.update(params)
+        return final_params
 
     def get(self, url_path, params=None):
         """
         Send a GET reques to the API.
         """
         url = urljoin(self._baseurl, url_path)
-        logging.info("API URL: %s" % url)
         response = self._session.get(url, params=self.build_params(params))
         logging.info("BaseAPI: GET response is HTTP %s" % response.status_code)
         if response.status_code != requests.status_codes.codes.ok:
@@ -321,15 +324,16 @@ class DirectoryAPI(BaseAPI):
                 name=u.get('name')
             ))
 
-    def list_users(self):
+    def list_users(self, search=None):
+        logging.info("SEARCH %s" % search)
         url_params = {'limit': 0}
         url = 'mgmt-pop/users'
-        if self._config.search_pattern:
-            url_params = url_params.update({'q': self._config.search_pattern})
+        if search:
+            url_params.update({'q': search})
         resp = self.get(url, params=url_params)
         resj = resp.json()
         for u in resj.get('objects'):
-            print("{scheme}{uuid},{fn},{ln}".format(
+            cli.print("{scheme}{uuid},{fn},{ln}".format(
                 scheme=EAAItem.Type.User.scheme,
                 uuid=u.get('uuid_url'),
                 fn=u.get('first_name'),
@@ -341,7 +345,7 @@ class DirectoryAPI(BaseAPI):
             if self._config.users:
                 if self._config.search_pattern and not self._config.batch:
                     cli.header("# list users matching %s in %s" % (self._config.search_pattern, self._directory_id))
-                self.list_users()
+                self.list_users(self._config.search_pattern)
             elif self._config.groups:
                 if self._config.search_pattern and not self._config.batch:
                     cli.header("# list groups matching %s" % self._config.search_pattern)
