@@ -14,8 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Load Akamai Enteprise Application Access access logs
-# Original author: <androcho@akamai.com> based on Splunk app
+"""
+cli-eaa
+:author: Antoine Drochon <androcho@akamai.com>
+"""
 
 from __future__ import print_function
 import os
@@ -42,7 +44,7 @@ import six
 from akamai.edgegrid import EdgeGridAuth, EdgeRc
 from config import EdgeGridConfig
 
-__version__ = '0.2.1'
+__version__ = '0.2.2'
 
 # If all parameters are set already, use them.  Otherwise
 # use the config
@@ -120,19 +122,40 @@ class EAAItem(object):
     """
     Representation of an EAA object.
     """
-    SEP = '://'
+    _SEP = '://'
+
+    class Type(Enum):
+
+        Connector = "con"
+        Application = "app"
+        ApplicationGroupAssociation = "appgrp"
+        Group = "group"
+        User = "user"
+        Directory = "dir"
+
+        @property
+        def scheme(self):
+            "Full prefix: object://."
+            return "%s%s" % (self.value, EAAItem._SEP)
+
+        @classmethod
+        def has_value(cls, value):
+            return value in cls.__members__.items()
 
     def __init__(self, obj_url):
         if not isinstance(obj_url, six.string_types):
             raise TypeError('obj_url must be a string')
-        if EAAItem.SEP not in obj_url:
+        if EAAItem._SEP not in obj_url:
             raise EAAInvalidMoniker('Invalid EAA Object URL %s' % obj_url)
-        scanned_type, scanned_uuid = obj_url.split(EAAItem.SEP)
-        self.objtype = scanned_type
+        scanned_type, scanned_uuid = obj_url.split(EAAItem._SEP)
+        if EAAItem.Type.has_value(scanned_type):
+            self.objtype = EAAItem.Type[scanned_type]
+        else:
+            ValueError('Invalid type %s' % scanned_type)
         self.uuid = scanned_uuid
 
     def __repr__(self):
-        return self.objtype + EAAItem.SEP + self.uuid
+        return self.objtype.scheme + self.uuid
 
     def __str__(self):
         return self.__repr__()
@@ -173,22 +196,21 @@ class BaseAPI(object):
         logging.info("Initialized with base_url %s" % self._baseurl)
 
     def build_params(self, params=None):
-        default_params = {}
+        final_params = {}
         if hasattr(self._config, 'contract_id') and self._config.contract_id:
-            default_params.update({'contractId': self._config.contract_id})
+            final_params.update({'contractId': self._config.contract_id})
         if isinstance(params, dict):
-            default_params.update(params)
-        return default_params
+            final_params.update(params)
+        return final_params
 
     def get(self, url_path, params=None):
         """
         Send a GET reques to the API.
         """
         url = urljoin(self._baseurl, url_path)
-        logging.info("API URL: %s" % url)
         response = self._session.get(url, params=self.build_params(params))
         logging.info("BaseAPI: GET response is HTTP %s" % response.status_code)
-        if response.status_code != 200:
+        if response.status_code != requests.status_codes.codes.ok:
             logging.info("BaseAPI: GET response body: %s" % response.text)
         return response
 
@@ -249,13 +271,16 @@ class SearchAPI(BaseAPI):
                         fnmatch.fnmatch(a.get('cname') or "", "*%s*" % search_pattern)
                     )
                 ):
-                    cli.print('app://%s,%s,%s,%s,%s,%s' % (
-                        a.get('uuid_url'),
-                        ApplicationAPI.Type(a.get('app_type')).name,
-                        a.get('name'),
-                        a.get('host'),
-                        a.get('cname'),
-                        ApplicationAPI.Status(a.get('app_status')).name))
+                    cli.print('{scheme}{app_id},{app_type},{name},{host},{cname},{status},{reach}'.format(
+                        scheme=EAAItem.Type.Application.scheme,
+                        app_id=a.get('uuid_url'),
+                        app_type=ApplicationAPI.Type(a.get('app_type')).name,
+                        name=a.get('name'),
+                        host=a.get('host'),
+                        cname=a.get('cname'),
+                        status=ApplicationAPI.Status(a.get('app_status')).name,
+                        reach='Y' if a.get('resource_status', {}).get('host_reachable') else 'F')
+                    )
                     app_found += 1
             # Footer
             if not config.batch:
@@ -293,20 +318,23 @@ class DirectoryAPI(BaseAPI):
         resp = self.get(url, params=url_params)
         resj = resp.json()
         for u in resj.get('objects'):
-            print('group://{uuid},{name}'.format(
+            print('{scheme}{uuid},{name}'.format(
+                scheme=EAAItem.Type.Group.scheme,
                 uuid=u.get('uuid_url'),
                 name=u.get('name')
             ))
 
-    def list_users(self):
+    def list_users(self, search=None):
+        logging.info("SEARCH %s" % search)
         url_params = {'limit': 0}
         url = 'mgmt-pop/users'
-        if self._config.search_pattern:
-            url_params = url_params.update({'q': self._config.search_pattern})
+        if search:
+            url_params.update({'q': search})
         resp = self.get(url, params=url_params)
         resj = resp.json()
         for u in resj.get('objects'):
-            print("user://{uuid},{fn},{ln}".format(
+            cli.print("{scheme}{uuid},{fn},{ln}".format(
+                scheme=EAAItem.Type.User.scheme,
                 uuid=u.get('uuid_url'),
                 fn=u.get('first_name'),
                 ln=u.get('last_name')
@@ -317,7 +345,7 @@ class DirectoryAPI(BaseAPI):
             if self._config.users:
                 if self._config.search_pattern and not self._config.batch:
                     cli.header("# list users matching %s in %s" % (self._config.search_pattern, self._directory_id))
-                self.list_users()
+                self.list_users(self._config.search_pattern)
             elif self._config.groups:
                 if self._config.search_pattern and not self._config.batch:
                     cli.header("# list groups matching %s" % self._config.search_pattern)
@@ -332,7 +360,8 @@ class DirectoryAPI(BaseAPI):
                 cli.header("#dir_id,dir_name,status,user_count")
             total_dir = 0
             for total_dir, d in enumerate(resj.get("objects"), start=1):
-                cli.print("dir://{dirid},{name},{status},{user_count}".format(
+                cli.print("{scheme}{dirid},{name},{status},{user_count}".format(
+                    scheme=EAAItem.Type.Directory.scheme,
                     dirid=d.get("uuid_url"),
                     name=d.get("name"),
                     status=d.get("directory_status"),
@@ -389,7 +418,7 @@ class DirectoryAPI(BaseAPI):
             if group:
                 logging.debug("Adding group %s" % (scanned_dn))
                 resp = self.post(url, json={"name": group, "dn": scanned_dn})
-                if resp.status_code != 200:
+                if resp.status_code != requests.status_codes.codes.ok:
                     logging.error(resp.status_code)
             else:
                 logging.warn("Invalid DN: %s" % scanned_dn)
@@ -440,9 +469,9 @@ class ApplicationAPI(BaseAPI):
                     continue
                 try:
                     scanned_obj = EAAItem(scanned_items[0])
-                    if scanned_obj.objtype == 'app':
+                    if scanned_obj.objtype == EAAItem.Type.Application:
                         applications.append(scanned_obj)
-                    elif scanned_obj.objtype == 'appgrp':
+                    elif scanned_obj.objtype == EAAItem.Type.ApplicationGroupAssociation:
                         appgroups.append(scanned_obj)
                 except EAAInvalidMoniker:
                     logging.warning("Invalid application moniker: %s" % scanned_items[0])
@@ -486,12 +515,14 @@ class ApplicationAPI(BaseAPI):
 #        print("RAW DATA: %s" % result.json())
         allowed_groups = result.json().get('objects')
         if not self._config.batch:
-            print("# Allowed Groups to access app %s" % app_moniker)
-            print("# appgroup_id,group_id,group_name,dir_name,mfa")
+            cli.header("# Allowed Groups to access app %s" % app_moniker)
+            cli.header("# appgroup_id,group_id,group_name,dir_name,mfa")
         for count, group in enumerate(allowed_groups, start=1):
             association = group.get('resource_uri', {}).get('href')
-            print("appgrp://{appgroup_id},grp://{group_id},{name},{dir_name},{mfa}".format(
+            cli.print("{prefix1}{appgroup_id},{prefix2}{group_id},{name},{dir_name},{mfa}".format(
+                prefix1=EAAItem.Type.ApplicationGroupAssociation.scheme,
                 appgroup_id=association.split('/')[-1],
+                prefix2=EAAItem.Type.Group.scheme,
                 group_id=group.get('group').get('group_uuid_url'),
                 name=group.get('group').get('name'),
                 dir_name=group.get('group').get('dir_name'),
@@ -540,8 +571,8 @@ class ApplicationAPI(BaseAPI):
         """
         if not isinstance(app_moniker, EAAItem):
             raise TypeError("Deploy expect and EAAItem, %s provided" % type(app_moniker))
-        if app_moniker.objtype != 'app':
-            raise ValueError("EAAItem object must be app, %s found" % app_moniker.objtype)
+        if app_moniker.objtype != EAAItem.Type.Application:
+            raise ValueError("EAAItem object must be app, %s found" % app_moniker.objtype.value)
         deploy = self.post('mgmt-pop/apps/{applicationId}/deploy'.format(applicationId=app_moniker.uuid))
         logging.info("ApplicationAPI: deploy app response: %s" % deploy.status_code)
         if deploy.status_code != 200:
@@ -551,11 +582,12 @@ class ApplicationAPI(BaseAPI):
 class EventLogAPI(BaseAPI):
     """
     EAA logs, this is using the legacy API
+    Based on Splunk app
     """
 
     #: Pull interval when using the tail mode
     PULL_INTERVAL_SEC = 15
-    COLLECTION_DELAY_MINUTES = 0
+    COLLECTION_DELAY_MINUTES = 1
 
     class EventType(Enum):
         USER_ACCESS = "access"
@@ -736,16 +768,20 @@ class ConnectorAPI(BaseAPI):
         data = self.get('mgmt-pop/agents', params=url_params)
         connectors = data.json()
         total_con = 0
+        logging.info(json.dumps(data.json(), indent=4))
         cli.print('#Connector-id,name,reachable,status,version,privateip,publicip,debug')
+        format_line = "{scheme}{con_id},{name},{reachable},{status},{version},{privateip},{publicip},{debugchan}"
         for total_con, c in enumerate(connectors.get('objects', {}), start=1):
-            cli.print("con://{con_id},{name},{reachable},{status},{version},{privateip},{publicip},{debugchan}".format(
+
+            cli.print(format_line.format(
+                scheme=EAAItem.Type.Connector.scheme,
                 con_id=c.get('uuid_url'),
                 name=c.get('name'),
                 reachable=c.get('reach'),
                 status=c.get('status'),
                 version=c.get('agent_version').replace('AGENT-', '').strip(),
                 privateip=c.get('private_ip'),
-                publicip=c.get('private_ip'),
+                publicip=c.get('public_ip'),
                 debugchan='Y' if c.get('debug_channel_permitted') else 'N'
             ))
         cli.footer("Total %s connector(s)" % total_con)
