@@ -140,7 +140,7 @@ class EAAItem(object):
 
         @classmethod
         def has_value(cls, value):
-            return value in cls.__members__.items()
+            return value in [m[1].value for m in cls.__members__.items()]
 
     def __init__(self, obj_url):
         if not isinstance(obj_url, six.string_types):
@@ -149,9 +149,9 @@ class EAAItem(object):
             raise EAAInvalidMoniker('Invalid EAA Object URL %s' % obj_url)
         scanned_type, scanned_uuid = obj_url.split(EAAItem._SEP)
         if EAAItem.Type.has_value(scanned_type):
-            self.objtype = EAAItem.Type[scanned_type]
+            self.objtype = EAAItem.Type(scanned_type)
         else:
-            ValueError('Invalid type %s' % scanned_type)
+            raise ValueError('Invalid type "%s"' % scanned_type)
         self.uuid = scanned_uuid
 
     def __repr__(self):
@@ -476,12 +476,21 @@ class ApplicationAPI(BaseAPI):
                 except EAAInvalidMoniker:
                     logging.warning("Invalid application moniker: %s" % scanned_items[0])
         else:
+            logging.info("Single app %s" % config.application_id)
             applications.append(EAAItem(config.application_id))
+            logging.info("%s" % EAAItem(config.application_id))
 
         if config.action == "deploy":
             for a in applications:
                 self.deploy(a)
                 print("Application %s deployment requested, it may take a few minutes before it gets live." % a)
+        elif config.action == "update":
+            if len(applications) > 1:
+                raise Exception("Batch operation not supported")
+            app = applications[0]
+            new_config = json.load(sys.stdin)
+            self.save(app, new_config)
+            cli.print("Configuration for application %s has been updated." % app)
         elif config.action == "add_dnsexception":
             for a in applications:
                 self.add_dnsexception(a)
