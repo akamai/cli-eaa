@@ -13,7 +13,10 @@
   - [Applications](#applications)
   - [Directory operations](#directory-operations)
   - [Connectors](#connectors)
-- [Troubleshooting](#troubleshooting)
+- [Known Limitations](#known-limitations)
+- [Troubleshooting and Support](#troubleshooting-and-support)
+  - [Self-troubleshooting](#self-troubleshooting)
+  - [Support](#support)
 
 ## Screenshot
 
@@ -230,7 +233,14 @@ con://e_0nShZBQ7esNAC3ZEkhSQ  demo-v2-con-3-amer  1          1       4.4.0-2765 
 con://OEe9o-n2S_aMeZpLxgwG0A  tmelab-sfo          1          1       4.4.0-2765  192.168.2.101  12.123.123.12   Y
 ```
 
-## Troubleshooting
+## Known Limitations
+
+- Akamai CLI `--proxy` option is not supported
+- While updating an application from a JSON, only a subset of the data will be updated in the back-end, not the entire application configuration
+
+## Troubleshooting and Support
+
+### Self-troubleshooting
 
 If the command is not working properly, you can increase the level of verbosity using:
 
@@ -238,3 +248,10 @@ If the command is not working properly, you can increase the level of verbosity 
 - `-d` or `--debug` to get full visibility, include API HTTP headers
 
 The messages are printed on _stderr_ so you can safely redirect stdout to a file or use the `--output` option.
+
+### Support
+
+`cli-eaa` is provided as-is and it is not supported by Akamai Support.
+To report any issue, feature request or bug, please open a new issue into the [GitHub Issues page](https://github.com/akamai/cli-eaa/issues)
+
+We are strongly encouraging developer to create a pull request.
