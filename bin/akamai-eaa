@@ -44,7 +44,7 @@ import six
 from akamai.edgegrid import EdgeGridAuth, EdgeRc
 from config import EdgeGridConfig
 
-__version__ = '0.2.2'
+__version__ = '0.2.3'
 
 # If all parameters are set already, use them.  Otherwise
 # use the config
@@ -254,7 +254,7 @@ class SearchAPI(BaseAPI):
         super(SearchAPI, self).__init__(config, api=BaseAPI.API_Version.OpenAPI)
 
     def search_app(self, search_pattern):
-        url_params = {'limit': SearchAPI.SCAN_LIMIT}
+        url_params = {'limit': SearchAPI.SCAN_LIMIT, 'expand': 'true'}
         search_app = self.get('mgmt-pop/apps', params=url_params)
         self.process_response(search_app.json(), search_pattern)
 
@@ -262,7 +262,8 @@ class SearchAPI(BaseAPI):
         app_found = 0
         if data.get("meta"):
             app_count = data.get("meta").get("total_count")
-
+            # Header
+            cli.print('#app_id,type,name,host,cname,status,reach')
             for a in data.get('objects', []):
                 if not search_pattern or (
                     search_pattern and (
@@ -279,8 +280,9 @@ class SearchAPI(BaseAPI):
                         host=a.get('host'),
                         cname=a.get('cname'),
                         status=ApplicationAPI.Status(a.get('app_status')).name,
-                        reach='Y' if a.get('resource_status', {}).get('host_reachable') else 'F')
+                        reach=('Y' if a.get('resource_status', {}).get('host_reachable') else 'F'))
                     )
+                    # cli.print(json.dumps(a))
                     app_found += 1
             # Footer
             if not config.batch:
@@ -510,7 +512,7 @@ class ApplicationAPI(BaseAPI):
                 # print(app_config)
 
     def load(self, app_moniker):
-        url_params = {'expand': 'true', 'expand_sdk': 'true'}
+        url_params = {}  # {'expand': 'true', 'expand_sdk': 'true'}
         url = 'mgmt-pop/apps/{applicationId}'.format(applicationId=app_moniker.uuid)
         result = self.get(url, params=url_params)
         return result.json()
@@ -611,6 +613,8 @@ class EventLogAPI(BaseAPI):
         self._content_type_form = {'content-type': 'application/x-www-form-urlencoded'}
         self._headers = None
         self._output = config.output
+        if not self._output:
+            self._output = sys.stdout
         self.line_count = 0
 
     def get_api_url(self, logtype):
@@ -619,7 +623,7 @@ class EventLogAPI(BaseAPI):
         else:
             return self.ACCESSLOG_API
 
-    def get_logs(self, drpc_args, logtype=EventType.USER_ACCESS, output=sys.stdout):
+    def get_logs(self, drpc_args, logtype=EventType.USER_ACCESS, output=None):
         """
         Fetch the logs, by default the user access logs.
         """
@@ -675,7 +679,7 @@ class EventLogAPI(BaseAPI):
                         try:
                             local_time = datetime.fromtimestamp(int(item.get('ts')/1000))
                             line = u"{},{}\n".format(local_time.isoformat(), item.get('splunk_line'))
-                            self._output.write(line.encode("utf8"))
+                            output.write(line)
                             self.line_count += 1
                             count += 1
                         except Exception as e:
@@ -719,12 +723,14 @@ class EventLogAPI(BaseAPI):
 
         logging.info("PID: %s" % os.getpid())
         logging.info("Poll interval: %s seconds" % EventLogAPI.PULL_INTERVAL_SEC)
+        out = None
         try:
-            if self._output is None:
-                out = sys.stdout
-            else:
-                logging.info("Output file: %s" % config.output)
+            if isinstance(self._output, str):
+                logging.info("Output file: %s" % self._output)
                 out = open(self._output, 'w+')
+            elif hasattr(self._output, 'write'):
+                out = self._output
+
             while True:
                 ets, sts = EventLogAPI.date_boundaries()
                 s = time.time()
@@ -761,7 +767,7 @@ class EventLogAPI(BaseAPI):
         except Exception:
             logging.exception("General exception while fetching EAA logs")
         finally:
-            if out is not None and out != sys.stdout:
+            if out and self._output != sys.stdout:
                 logging.debug("Closing output file...")
                 out.close()
             logging.info("%s log lines were fetched." % self.line_count)
@@ -794,7 +800,6 @@ class ConnectorAPI(BaseAPI):
                 debugchan='Y' if c.get('debug_channel_permitted') else 'N'
             ))
         cli.footer("Total %s connector(s)" % total_con)
-
 
 
 if __name__ == "__main__":
