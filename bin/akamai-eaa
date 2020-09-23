@@ -44,7 +44,7 @@ import six
 from akamai.edgegrid import EdgeGridAuth, EdgeRc
 from config import EdgeGridConfig
 
-__version__ = '0.2.3'
+__version__ = '0.2.4'
 
 # If all parameters are set already, use them.  Otherwise
 # use the config
@@ -590,6 +590,33 @@ class ApplicationAPI(BaseAPI):
             logging.error(deploy.text)
 
 
+class ReportingAPI(BaseAPI):
+    def __init__(self, config):
+        super(ReportingAPI, self).__init__(config, api=BaseAPI.API_Version.OpenAPI)
+
+    def clients(self):
+        now = time.time()
+        params = {
+            'limit': 0,
+            'start': int((now - 30 * 24 * 60 * 60) * 1000),
+            'end': int(now * 1000)
+        }
+        resp = self.get('mgmt-pop/clients', params=params)
+        if resp.status_code != 200:
+            logging.error(resp.text)
+        data = resp.json()
+        cli.header("#device_id,version,idp_user,idp_host,lastseen")
+        for count, c in enumerate(data.get('objects', {})):
+            cli.print("{device_id},{version},{idp_user},{idp_host},{lastseen}".format(
+                device_id=c.get("device_id"),
+                version=c.get("device_info", {}).get("version"),
+                idp_user=c.get("idp_user"),
+                idp_host=c.get("idp_host"),
+                lastseen=c.get("timestamp")
+            ))
+        cli.footer("%s unique EAA Clients checked-in in the last 30 days" % count)
+
+
 class EventLogAPI(BaseAPI):
     """
     EAA logs, this is using the legacy API
@@ -839,6 +866,10 @@ if __name__ == "__main__":
         elif config.command in ("connector", "c"):
             c = ConnectorAPI(config)
             c.list()
+        elif config.command in ("report", "r"):
+            r = ReportingAPI(config)
+            if config.report_name == "clients":
+                r.clients()
         else:
             config.parser.print_help()
             sys.exit(1)

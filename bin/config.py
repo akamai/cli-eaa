@@ -89,7 +89,8 @@ class EdgeGridConfig():
         subsub.add_parser("viewgroups", help="Dump application configuration (JSON)")
         subsub.add_parser("delgroup", help="Remove group from application, appgroup ID must provided")
 
-        # choices=['deploy', 'add_dnsexception', 'del_dnsexception', 'save']
+        report_parser = subparsers.add_parser('report', aliases=["r"], help='EAA reports')
+        report_parser.add_argument(dest='report_name', choices=['clients'], help="Report name")
 
         con_parser = subparsers.add_parser('connector', aliases=["c"], help='Manage EAA connectors')
 
