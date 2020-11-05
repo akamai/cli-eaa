@@ -43,8 +43,9 @@ import re
 import six
 from akamai.edgegrid import EdgeGridAuth, EdgeRc
 from config import EdgeGridConfig
+from jinja2 import Template
 
-__version__ = '0.2.4'
+__version__ = '0.2.5'
 
 # If all parameters are set already, use them.  Otherwise
 # use the config
@@ -454,6 +455,21 @@ class ApplicationAPI(BaseAPI):
         Tunnel = 4
         ETP = 5
 
+    class Profile(Enum):
+        HTTP = 1
+        SharePoint = 2
+        JIRA = 3
+        RDP = 4
+        VNC = 5
+        SSH = 6
+        Jenkins = 7
+        Confluence = 8
+        TCP = 9
+
+    class Domain(Enum):
+        Custom = 1
+        Akamai = 2
+
     def __init__(self, config):
         super(ApplicationAPI, self).__init__(config, api=BaseAPI.API_Version.OpenAPI)
 
@@ -464,19 +480,21 @@ class ApplicationAPI(BaseAPI):
         applications = list()
         appgroups = list()
         if self._config.application_id == '-':
-            for line in sys.stdin:
-                scanned_items = line.split(',')
-                if len(scanned_items) == 0:
-                    logging.warning("Cannot parse line: %s" % line)
-                    continue
-                try:
-                    scanned_obj = EAAItem(scanned_items[0])
-                    if scanned_obj.objtype == EAAItem.Type.Application:
-                        applications.append(scanned_obj)
-                    elif scanned_obj.objtype == EAAItem.Type.ApplicationGroupAssociation:
-                        appgroups.append(scanned_obj)
-                except EAAInvalidMoniker:
-                    logging.warning("Invalid application moniker: %s" % scanned_items[0])
+            # nested if below because we don't do anything on create in this section
+            if self._config.action != 'create':
+                for line in sys.stdin:
+                    scanned_items = line.split(',')
+                    if len(scanned_items) == 0:
+                        logging.warning("Cannot parse line: %s" % line)
+                        continue
+                    try:
+                        scanned_obj = EAAItem(scanned_items[0])
+                        if scanned_obj.objtype == EAAItem.Type.Application:
+                            applications.append(scanned_obj)
+                        elif scanned_obj.objtype == EAAItem.Type.ApplicationGroupAssociation:
+                            appgroups.append(scanned_obj)
+                    except EAAInvalidMoniker:
+                        logging.warning("Invalid application moniker: %s" % scanned_items[0])
         else:
             logging.info("Single app %s" % config.application_id)
             applications.append(EAAItem(config.application_id))
@@ -485,14 +503,21 @@ class ApplicationAPI(BaseAPI):
         if config.action == "deploy":
             for a in applications:
                 self.deploy(a)
-                print("Application %s deployment requested, it may take a few minutes before it gets live." % a)
+                cli.print("Application %s deployment requested, it may take a few minutes before it gets live." % a)
+        elif config.action == "create":
+            # new_config = json.load(sys.stdin)
+            new_config = sys.stdin.read()
+            self.create(new_config)
         elif config.action == "update":
             if len(applications) > 1:
                 raise Exception("Batch operation not supported")
             app = applications[0]
             new_config = json.load(sys.stdin)
-            self.save(app, new_config)
+            self.update(app, new_config)
             cli.print("Configuration for application %s has been updated." % app)
+        elif config.action == "delete":
+            for a in applications:
+                self.delete_app(a)
         elif config.action == "add_dnsexception":
             for a in applications:
                 self.add_dnsexception(a)
@@ -541,19 +566,74 @@ class ApplicationAPI(BaseAPI):
             ))
 
         if not self._config.batch:
-            print("# %s groups configured to access application %s" % (count, app_moniker))
+            cli.print("# %s groups configured to access application %s" % (count, app_moniker))
         return allowed_groups
 
+    def delete_app(self, app_moniker):
+        deletion = self.delete('mgmt-pop/apps/{applicationId}'.format(applicationId=app_moniker.uuid))
+        if deletion.status_code == 200:
+            cli.print("Application %s deleted." % app_moniker.uuid)
+
     def delgroup(self, appgroup_moniker):
-        print("Delete App-Group association %s..." % appgroup_moniker)
+        cli.print("Delete App-Group association %s..." % appgroup_moniker)
         deletion = self.post('mgmt-pop/appgroups', params={'method': 'DELETE'},
                              json={'deleted_objects': [appgroup_moniker.uuid]})
         if deletion.status_code == 200:
-            print("Association %s deleted." % appgroup_moniker)
+            cli.print("Association %s deleted." % appgroup_moniker)
 
-    def save(self, app_moniker, app_config):
+    def cloudzone_lookup(self, name):
+        """Lookup a cloud zone UUID based on it's name."""
+        pops = self.get('mgmt-pop/pops?shared=true')
+        for pop in pops.json().get('objects'):
+            if pop.get('region') == name:
+                return pop.get('uuid_url')
+        return ""
+
+    def parse_template(self, raw_config):
         """
-        Save/update an EAA application configuration.
+        Parse a template
+        """
+        t = Template(raw_config)
+        t.globals['AppProfile'] = ApplicationAPI.Profile
+        t.globals['AppDomainType'] = ApplicationAPI.Domain
+        t.globals['cli_cloudzone'] = self.cloudzone_lookup
+        return t.render()
+
+    def create(self, raw_app_config):
+        """
+        Create a new EAA application configuration.
+        :param app_config: configuration as JSON string
+        """
+        app_config = json.loads(self.parse_template(raw_app_config))
+        print(json.dumps(app_config))
+        newapp = self.post('mgmt-pop/apps', json=app_config)
+        logging.info("Create app response: %s" % newapp.status_code)
+        logging.info("Create app response: %s" % newapp.text)
+        if newapp.status_code != 200:
+            exit(2)
+        newapp_config = newapp.json()
+        app_moniker = EAAItem("app://{}".format(newapp_config.get('uuid_url')))
+        logging.info("UUID of the newapp: %s" % app_moniker)
+
+        # Sub components of the application configuration definition
+
+        # --- Connectors
+        if app_config.get('agents'):
+            self.attach_connectors(app_moniker, app_config.get('agents', []))
+
+        # --- IdP, Directories, Groups
+        # The "view" operation gives us the IdP in idp -> idp_id
+
+        # POST https://control.akamai.com/crux/v1/mgmt-pop/appid
+        # {"app":"nKG6-b1tTei8UEy0Ypr8gg","idp":"NMmW2cwqQJanYn3VTXoS9Q"}
+        # POST /crux/v1/mgmt-pop/appdirectories
+        # {"data":[{"apps":["nKG6-b1tTei8UEy0Ypr8gg"],"directories":[{"uuid_url":"2Kz2YqmgSpqT_IJq9BLkWg","enable_mfa":null}]}]}
+        # POST /crux/v1/mgmt-pop/appgroups
+        # {"data":[{"apps":["nKG6-b1tTei8UEy0Ypr8gg"],"groups":[{"enable_mfa":"inherit","uuid_url":"58Es60mZSLqVE-7soomxGg"},{"enable_mfa":"inherit","uuid_url":"196YoFHhQa-MaQPEIsIF5A"},{"enable_mfa":"inherit","uuid_url":"yvjnNqoDQt2P0S1Q2ex3iQ"},{"enable_mfa":"inherit","uuid_url":"h9EbP7CuQIWSwZDsiRLWyw"},{"enable_mfa":"inherit","uuid_url":"16nUm7dCSyiihfCvMiHrMg"},{"enable_mfa":"inherit","uuid_url":"zueKU3XmTsm9jGw7Rsqd0w"},{"enable_mfa":"inherit","uuid_url":"ZnV0hV9HRZ6RuPx3fYcw7Q"},{"enable_mfa":"inherit","uuid_url":"9hDCxROqTYmhokljs6uAsA"},{"enable_mfa":"inherit","uuid_url":"7rZelG9nQaybp9pc-hLQoQ"},{"enable_mfa":"inherit","uuid_url":"RdVlFNSQRoODrN7e2HGDNg"},{"enable_mfa":"inherit","uuid_url":"0FYrAUaJSqKVzIbRyTFOig"},{"enable_mfa":"inherit","uuid_url":"iOlcvuOgSmCYaYDgvpazMg"},{"enable_mfa":"inherit","uuid_url":"8EhKQdu_TfGTha37RwZbPg"},{"enable_mfa":"inherit","uuid_url":"jwoEb5gCTxi0j0SCJlHqew"},{"enable_mfa":"inherit","uuid_url":"CxhdrFKnQG2mBSUBV9-kKQ"},{"enable_mfa":"inherit","uuid_url":"6A5I6-ccQSCqwZ8hxxRvBg"},{"enable_mfa":"inherit","uuid_url":"y6CI6-DcT5OcP4cvEDW7Zg"},{"enable_mfa":"inherit","uuid_url":"iOXYfOX6T-mMsiI21-DRkQ"}]}]}
+
+    def update(self, app_moniker, app_config):
+        """
+        Update an existing EAA application configuration.
         """
         update = self.put(
             'mgmt-pop/apps/{applicationId}'.format(applicationId=app_moniker.uuid),
@@ -563,6 +643,29 @@ class ApplicationAPI(BaseAPI):
         logging.info("Update app response: %s" % update.text)
         if update.status_code != 200:
             exit(2)
+
+    def attach_connectors(self, app_moniker, connectors):
+        """
+        Attach connector/s to an application.
+        """
+        # POST on mgmt-pop/apps/DBMcU6FwSjKa7c9sny4RLg/agents
+        # Body
+        # {"agents":[{"uuid_url":"cht3_GEjQWyMW9LEk7KQfg"}]}
+        logging.info("Attaching {} connectors...".format(len(connectors)))
+        api_resp = self.post(
+            'mgmt-pop/apps/{applicationId}/agents'.format(applicationId=app_moniker.uuid),
+            json={'agents': connectors}
+        )
+        logging.info("Attach connector response: %s" % api_resp.status_code)
+        logging.info("Attach connector app response: %s" % api_resp.text)
+        if api_resp.status_code != 200:
+            exit(2)
+
+    def detach_connectors(self, app_moniker, connectors):
+        """
+        TODO: implement this function
+        """
+        pass
 
     def add_dnsexception(self, app_moniker):
         logging.info("Adding DNS exception: %s" % config.exception_fqdn)
