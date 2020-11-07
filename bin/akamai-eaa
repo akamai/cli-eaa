@@ -86,6 +86,11 @@ class cli:
             return logging.ERROR
 
     @staticmethod
+    def exit(code):
+        logging.info("Exit cli-eaa with code %s" % code)
+        exit(code)
+
+    @staticmethod
     def exit_gracefully(signum, frame):
         logging.info("Stop due to SIGTERM or SIGINT signal received")
         stop_event.set()
@@ -537,7 +542,9 @@ class ApplicationAPI(BaseAPI):
                 # print(app_config)
 
     def load(self, app_moniker):
-        url_params = {}  # {'expand': 'true', 'expand_sdk': 'true'}
+        # For the save/duplicate-type operations we need some extra data, 
+        # hence the two expand parameters
+        url_params = {'expand': 'true', 'expand_sdk': 'true'}
         url = 'mgmt-pop/apps/{applicationId}'.format(applicationId=app_moniker.uuid)
         result = self.get(url, params=url_params)
         return result.json()
@@ -597,7 +604,9 @@ class ApplicationAPI(BaseAPI):
         t.globals['AppProfile'] = ApplicationAPI.Profile
         t.globals['AppDomainType'] = ApplicationAPI.Domain
         t.globals['cli_cloudzone'] = self.cloudzone_lookup
-        return t.render()
+        output = t.render()
+        logging.debug("JSON Post-Template Render: %s" % output)
+        return output
 
     def create(self, raw_app_config):
         """
@@ -610,7 +619,7 @@ class ApplicationAPI(BaseAPI):
         logging.info("Create app response: %s" % newapp.status_code)
         logging.info("Create app response: %s" % newapp.text)
         if newapp.status_code != 200:
-            exit(2)
+            cli.exit(2)
         newapp_config = newapp.json()
         app_moniker = EAAItem("app://{}".format(newapp_config.get('uuid_url')))
         logging.info("UUID of the newapp: %s" % app_moniker)
@@ -621,15 +630,89 @@ class ApplicationAPI(BaseAPI):
         if app_config.get('agents'):
             self.attach_connectors(app_moniker, app_config.get('agents', []))
 
-        # --- IdP, Directories, Groups
+        # --- Authentication: IdP, Directories, Groups
         # The "view" operation gives us the IdP in idp -> idp_id
+        scanned_idp_uuid = app_config.get('idp', {}).get('idp_id')
+        if scanned_idp_uuid:
+            idp_app_payload = {"app": app_moniker.uuid, "idp": scanned_idp_uuid}
+            idp_app_resp = self.post('mgmt-pop/appidp', json=idp_app_payload)
+            logging.info("IdP-app association response: %s %s" % (idp_app_resp.status_code, idp_app_resp.text))
 
-        # POST https://control.akamai.com/crux/v1/mgmt-pop/appid
-        # {"app":"nKG6-b1tTei8UEy0Ypr8gg","idp":"NMmW2cwqQJanYn3VTXoS9Q"}
+        # For directory, the view operation gives us the directories in directories[] -> uuid_url
+        # Insert API is
         # POST /crux/v1/mgmt-pop/appdirectories
         # {"data":[{"apps":["nKG6-b1tTei8UEy0Ypr8gg"],"directories":[{"uuid_url":"2Kz2YqmgSpqT_IJq9BLkWg","enable_mfa":null}]}]}
+        scanned_directories = app_config.get('directories', [])
+        app_directories_payload = {"data": [{"apps": [app_moniker.uuid], "directories": scanned_directories}]}
+        app_directories_resp = self.post('mgmt-pop/appdirectories', json=app_directories_payload)
+        logging.info(
+            "App directories association response: %s %s" %
+            (app_directories_resp.status_code, app_directories_resp.text)
+        )
+        if app_directories_resp.status_code != 200:
+            cli.exit(2)
+
+        # GET /crux/v1/mgmt-pop/apps/H7MU0_c0TfqVy9K6ed8-Qg/groups?expand=true&limit=0
+        # {
+        #     "meta": {
+        #         "limit": 1000,
+        #         "next": null,
+        #         "offset": 0,
+        #         "previous": null,
+        #         "total_count": 2
+        #     },
+        #     "objects": [
+        #         {
+        #             "app": {
+        #                 "app_uuid_url": "H7MU0_c0TfqVy9K6ed8-Qg",
+        #                 "name": "TME - EAA CLI Example Application 47"
+        #             },
+        #             "enable_mfa": "inherit",
+        #             "group": {
+        #                 "dir_name": "AD Domain AkamaiDemo.net (global)",
+        #                 "dir_uuid_url": "2Kz2YqmgSpqT_IJq9BLkWg",
+        #                 "group_uuid_url": "196YoFHhQa-MaQPEIsIF5A",
+        #                 "name": "Administrators"
+        #             },
+        #             "resource_uri": {
+        #                 "apps": "/api/v1/apps/H7MU0_c0TfqVy9K6ed8-Qg",
+        #                 "groups": "/api/v1/groups/196YoFHhQa-MaQPEIsIF5A",
+        #                 "href": "/api/v1/appgroups/8f-BH2MbQbGgg6533KZirw"
+        #             },
+        #             "uuid_url": "8f-BH2MbQbGgg6533KZirw"
+        #         },
+        #         {
+        #             "app": {
+        #                 "app_uuid_url": "H7MU0_c0TfqVy9K6ed8-Qg",
+        #                 "name": "TME - EAA CLI Example Application 47"
+        #             },
+        #             "enable_mfa": "inherit",
+        #             "group": {
+        #                 "dir_name": "AD Domain AkamaiDemo.net (global)",
+        #                 "dir_uuid_url": "2Kz2YqmgSpqT_IJq9BLkWg",
+        #                 "group_uuid_url": "8EhKQdu_TfGTha37RwZbPg",
+        #                 "name": "External"
+        #             },
+        #             "resource_uri": {
+        #                 "apps": "/api/v1/apps/H7MU0_c0TfqVy9K6ed8-Qg",
+        #                 "groups": "/api/v1/groups/8EhKQdu_TfGTha37RwZbPg",
+        #                 "href": "/api/v1/appgroups/PrU_EFojQ46puYtQW9igrA"
+        #             },
+        #             "uuid_url": "PrU_EFojQ46puYtQW9igrA"
+        #         }
+        #     ]
+        # }
+
         # POST /crux/v1/mgmt-pop/appgroups
         # {"data":[{"apps":["nKG6-b1tTei8UEy0Ypr8gg"],"groups":[{"enable_mfa":"inherit","uuid_url":"58Es60mZSLqVE-7soomxGg"},{"enable_mfa":"inherit","uuid_url":"196YoFHhQa-MaQPEIsIF5A"},{"enable_mfa":"inherit","uuid_url":"yvjnNqoDQt2P0S1Q2ex3iQ"},{"enable_mfa":"inherit","uuid_url":"h9EbP7CuQIWSwZDsiRLWyw"},{"enable_mfa":"inherit","uuid_url":"16nUm7dCSyiihfCvMiHrMg"},{"enable_mfa":"inherit","uuid_url":"zueKU3XmTsm9jGw7Rsqd0w"},{"enable_mfa":"inherit","uuid_url":"ZnV0hV9HRZ6RuPx3fYcw7Q"},{"enable_mfa":"inherit","uuid_url":"9hDCxROqTYmhokljs6uAsA"},{"enable_mfa":"inherit","uuid_url":"7rZelG9nQaybp9pc-hLQoQ"},{"enable_mfa":"inherit","uuid_url":"RdVlFNSQRoODrN7e2HGDNg"},{"enable_mfa":"inherit","uuid_url":"0FYrAUaJSqKVzIbRyTFOig"},{"enable_mfa":"inherit","uuid_url":"iOlcvuOgSmCYaYDgvpazMg"},{"enable_mfa":"inherit","uuid_url":"8EhKQdu_TfGTha37RwZbPg"},{"enable_mfa":"inherit","uuid_url":"jwoEb5gCTxi0j0SCJlHqew"},{"enable_mfa":"inherit","uuid_url":"CxhdrFKnQG2mBSUBV9-kKQ"},{"enable_mfa":"inherit","uuid_url":"6A5I6-ccQSCqwZ8hxxRvBg"},{"enable_mfa":"inherit","uuid_url":"y6CI6-DcT5OcP4cvEDW7Zg"},{"enable_mfa":"inherit","uuid_url":"iOXYfOX6T-mMsiI21-DRkQ"}]}]}
+
+        # --- ACL
+
+        # --- Services
+
+        # At the end we reload the app entirely
+        print(json.dumps(self.load(app_moniker)))
+
 
     def update(self, app_moniker, app_config):
         """
@@ -642,7 +725,7 @@ class ApplicationAPI(BaseAPI):
         logging.info("Update app response: %s" % update.status_code)
         logging.info("Update app response: %s" % update.text)
         if update.status_code != 200:
-            exit(2)
+            cli.exit(2)
 
     def attach_connectors(self, app_moniker, connectors):
         """
@@ -658,8 +741,8 @@ class ApplicationAPI(BaseAPI):
         )
         logging.info("Attach connector response: %s" % api_resp.status_code)
         logging.info("Attach connector app response: %s" % api_resp.text)
-        if api_resp.status_code != 200:
-            exit(2)
+        if api_resp.status_code not in (200, 201):
+            cli.exit(2)
 
     def detach_connectors(self, app_moniker, connectors):
         """
