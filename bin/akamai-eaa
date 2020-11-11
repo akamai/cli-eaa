@@ -622,6 +622,13 @@ class ApplicationAPI(BaseAPI):
                 return pop.get('uuid_url')
         return ""
 
+    def certificate_lookup(self, cn):
+        certs = self.get('mgmt-pop/certificates?limit=0')
+        for cert in certs.json().get('objects'):
+            if cert.get('cn') == cn:
+                return cert.get('uuid_url')
+        return ""
+
     def parse_template(self, raw_config):
         """
         Parse a template
@@ -630,6 +637,7 @@ class ApplicationAPI(BaseAPI):
         t.globals['AppProfile'] = ApplicationAPI.Profile
         t.globals['AppDomainType'] = ApplicationAPI.Domain
         t.globals['cli_cloudzone'] = self.cloudzone_lookup
+        t.globals['cli_certificate'] = self.certificate_lookup
         output = t.render()
         logging.debug("JSON Post-Template Render: %s" % output)
         return output
