@@ -45,7 +45,7 @@ from akamai.edgegrid import EdgeGridAuth, EdgeRc
 from config import EdgeGridConfig
 from jinja2 import Template
 
-__version__ = '0.2.5'
+__version__ = '0.2.6'
 
 # If all parameters are set already, use them.  Otherwise
 # use the config
