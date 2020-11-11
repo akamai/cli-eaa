@@ -542,12 +542,39 @@ class ApplicationAPI(BaseAPI):
                 # print(app_config)
 
     def load(self, app_moniker):
-        # For the save/duplicate-type operations we need some extra data, 
+        """Load application configuration."""
+        # For the save/duplicate-type operations we need some extra data,
         # hence the two expand parameters
         url_params = {'expand': 'true', 'expand_sdk': 'true'}
         url = 'mgmt-pop/apps/{applicationId}'.format(applicationId=app_moniker.uuid)
         result = self.get(url, params=url_params)
-        return result.json()
+        app_config = result.json()
+
+        # Merge application groups info and align the view
+        # to match the structure expected in save operation
+        groups_url = 'mgmt-pop/apps/{applicationId}/groups'.format(applicationId=app_moniker.uuid)
+        groups_result = self.get(groups_url, params={'limit': 0})
+        groups = groups_result.json()
+        app_config['groups'] = []
+        for g in groups.get('objects', []):
+            app_config['groups'].append(
+                {
+                    'name': g.get('group', {}).get('name'),
+                    'enable_mfa': g.get('enable_mfa', 'inherit'),
+                    'uuid_url': g.get('group', {}).get('group_uuid_url')
+                }
+            )
+
+        # Merge URL path-based policies and align the view
+        # to match the structure expected in save operation
+        upp_url = 'mgmt-pop/apps/{applicationId}/urllocation'
+        upp_result = self.get(upp_url.format(applicationId=app_moniker.uuid), params={'limit': 0})
+        upp = upp_result.json()
+        app_config['urllocation'] = []
+        for upp_rule in upp.get('objects', []):
+            app_config['urllocation'].append(upp_rule)
+
+        return app_config
 
     def loadgroups(self, app_moniker):
         """Directory+Groups allowed to access this application."""
@@ -555,7 +582,6 @@ class ApplicationAPI(BaseAPI):
         url = 'mgmt-pop/apps/{applicationId}/groups'.format(applicationId=app_moniker.uuid)
         result = self.get(url, url_params)
         count = 0
-#        print("RAW DATA: %s" % result.json())
         allowed_groups = result.json().get('objects')
         if not self._config.batch:
             cli.header("# Allowed Groups to access app %s" % app_moniker)
@@ -612,25 +638,58 @@ class ApplicationAPI(BaseAPI):
         """
         Create a new EAA application configuration.
         :param app_config: configuration as JSON string
+
+        Note: the portal use the POST to create a new app with a minimal payload:
+              {"app_profile":1,"app_type":1,"client_app_mode":1,"app_profile_id":"Fp3RYok1EeSE6AIy9YR0Dw",
+              "name":"tes","description":"test"}
+              We should do the same here
         """
         app_config = json.loads(self.parse_template(raw_app_config))
-        print(json.dumps(app_config))
-        newapp = self.post('mgmt-pop/apps', json=app_config)
-        logging.info("Create app response: %s" % newapp.status_code)
-        logging.info("Create app response: %s" % newapp.text)
+        logging.debug("Post Jinja parsing:\n%s" % json.dumps(app_config))
+        app_config_create = {
+            "app_profile": app_config.get('app_profile'),
+            "app_type": app_config.get('app_type', ApplicationAPI.Type.Hosted.value),
+            "name": app_config.get('name'),
+            "description": app_config.get('description')
+        }
+        newapp = self.post('mgmt-pop/apps', json=app_config_create)
+        logging.info("Create app core: %s %s" % (newapp.status_code, newapp.text))
         if newapp.status_code != 200:
             cli.exit(2)
         newapp_config = newapp.json()
         app_moniker = EAAItem("app://{}".format(newapp_config.get('uuid_url')))
         logging.info("UUID of the newapp: %s" % app_moniker)
 
-        # Sub components of the application configuration definition
+        # Now we push everything else as a PUT
+        self.put('mgmt-pop/apps/{applicationId}'.format(applicationId=app_moniker.uuid), json=app_config)
+
+        # Sub-components of the application configuration definition
 
         # --- Connectors
         if app_config.get('agents'):
             self.attach_connectors(app_moniker, app_config.get('agents', []))
 
-        # --- Authentication: IdP, Directories, Groups
+        # IdP, Directories, Groups
+        self.create_auth(app_moniker, app_config)
+
+        # --- ACL
+        # TODO: implement
+
+        # --- Services
+        # TODO: implement
+
+        # URL based policies
+        self.create_urlbasedpolicies(app_moniker, app_config)
+
+        # At the end we reload the app entirely
+        cli.print(json.dumps(self.load(app_moniker)))
+
+    def create_auth(self, app_moniker, app_config):
+        """
+        Create application authentication configuration
+        IdP, Directories, Groups
+        """
+        # IdP
         # The "view" operation gives us the IdP in idp -> idp_id
         scanned_idp_uuid = app_config.get('idp', {}).get('idp_id')
         if scanned_idp_uuid:
@@ -638,10 +697,8 @@ class ApplicationAPI(BaseAPI):
             idp_app_resp = self.post('mgmt-pop/appidp', json=idp_app_payload)
             logging.info("IdP-app association response: %s %s" % (idp_app_resp.status_code, idp_app_resp.text))
 
-        # For directory, the view operation gives us the directories in directories[] -> uuid_url
-        # Insert API is
-        # POST /crux/v1/mgmt-pop/appdirectories
-        # {"data":[{"apps":["nKG6-b1tTei8UEy0Ypr8gg"],"directories":[{"uuid_url":"2Kz2YqmgSpqT_IJq9BLkWg","enable_mfa":null}]}]}
+        # Directory
+        # The view operation gives us the directories in directories[] -> uuid_url
         scanned_directories = app_config.get('directories', [])
         app_directories_payload = {"data": [{"apps": [app_moniker.uuid], "directories": scanned_directories}]}
         app_directories_resp = self.post('mgmt-pop/appdirectories', json=app_directories_payload)
@@ -651,68 +708,35 @@ class ApplicationAPI(BaseAPI):
         )
         if app_directories_resp.status_code != 200:
             cli.exit(2)
+        # Groups
+        if len(app_config.get('groups', [])) > 0:
+            app_groups_payload = {'data': [{'apps': [app_moniker.uuid], 'groups': app_config.get('groups', [])}]}
+            app_groups_resp = self.post('mgmt-pop/appgroups', json=app_groups_payload)
+            if app_groups_resp.status_code != 200:
+                cli.exit(2)
+        else:
+            logging.debug("No group set")
 
-        # GET /crux/v1/mgmt-pop/apps/H7MU0_c0TfqVy9K6ed8-Qg/groups?expand=true&limit=0
-        # {
-        #     "meta": {
-        #         "limit": 1000,
-        #         "next": null,
-        #         "offset": 0,
-        #         "previous": null,
-        #         "total_count": 2
-        #     },
-        #     "objects": [
-        #         {
-        #             "app": {
-        #                 "app_uuid_url": "H7MU0_c0TfqVy9K6ed8-Qg",
-        #                 "name": "TME - EAA CLI Example Application 47"
-        #             },
-        #             "enable_mfa": "inherit",
-        #             "group": {
-        #                 "dir_name": "AD Domain AkamaiDemo.net (global)",
-        #                 "dir_uuid_url": "2Kz2YqmgSpqT_IJq9BLkWg",
-        #                 "group_uuid_url": "196YoFHhQa-MaQPEIsIF5A",
-        #                 "name": "Administrators"
-        #             },
-        #             "resource_uri": {
-        #                 "apps": "/api/v1/apps/H7MU0_c0TfqVy9K6ed8-Qg",
-        #                 "groups": "/api/v1/groups/196YoFHhQa-MaQPEIsIF5A",
-        #                 "href": "/api/v1/appgroups/8f-BH2MbQbGgg6533KZirw"
-        #             },
-        #             "uuid_url": "8f-BH2MbQbGgg6533KZirw"
-        #         },
-        #         {
-        #             "app": {
-        #                 "app_uuid_url": "H7MU0_c0TfqVy9K6ed8-Qg",
-        #                 "name": "TME - EAA CLI Example Application 47"
-        #             },
-        #             "enable_mfa": "inherit",
-        #             "group": {
-        #                 "dir_name": "AD Domain AkamaiDemo.net (global)",
-        #                 "dir_uuid_url": "2Kz2YqmgSpqT_IJq9BLkWg",
-        #                 "group_uuid_url": "8EhKQdu_TfGTha37RwZbPg",
-        #                 "name": "External"
-        #             },
-        #             "resource_uri": {
-        #                 "apps": "/api/v1/apps/H7MU0_c0TfqVy9K6ed8-Qg",
-        #                 "groups": "/api/v1/groups/8EhKQdu_TfGTha37RwZbPg",
-        #                 "href": "/api/v1/appgroups/PrU_EFojQ46puYtQW9igrA"
-        #             },
-        #             "uuid_url": "PrU_EFojQ46puYtQW9igrA"
-        #         }
-        #     ]
-        # }
-
-        # POST /crux/v1/mgmt-pop/appgroups
-        # {"data":[{"apps":["nKG6-b1tTei8UEy0Ypr8gg"],"groups":[{"enable_mfa":"inherit","uuid_url":"58Es60mZSLqVE-7soomxGg"},{"enable_mfa":"inherit","uuid_url":"196YoFHhQa-MaQPEIsIF5A"},{"enable_mfa":"inherit","uuid_url":"yvjnNqoDQt2P0S1Q2ex3iQ"},{"enable_mfa":"inherit","uuid_url":"h9EbP7CuQIWSwZDsiRLWyw"},{"enable_mfa":"inherit","uuid_url":"16nUm7dCSyiihfCvMiHrMg"},{"enable_mfa":"inherit","uuid_url":"zueKU3XmTsm9jGw7Rsqd0w"},{"enable_mfa":"inherit","uuid_url":"ZnV0hV9HRZ6RuPx3fYcw7Q"},{"enable_mfa":"inherit","uuid_url":"9hDCxROqTYmhokljs6uAsA"},{"enable_mfa":"inherit","uuid_url":"7rZelG9nQaybp9pc-hLQoQ"},{"enable_mfa":"inherit","uuid_url":"RdVlFNSQRoODrN7e2HGDNg"},{"enable_mfa":"inherit","uuid_url":"0FYrAUaJSqKVzIbRyTFOig"},{"enable_mfa":"inherit","uuid_url":"iOlcvuOgSmCYaYDgvpazMg"},{"enable_mfa":"inherit","uuid_url":"8EhKQdu_TfGTha37RwZbPg"},{"enable_mfa":"inherit","uuid_url":"jwoEb5gCTxi0j0SCJlHqew"},{"enable_mfa":"inherit","uuid_url":"CxhdrFKnQG2mBSUBV9-kKQ"},{"enable_mfa":"inherit","uuid_url":"6A5I6-ccQSCqwZ8hxxRvBg"},{"enable_mfa":"inherit","uuid_url":"y6CI6-DcT5OcP4cvEDW7Zg"},{"enable_mfa":"inherit","uuid_url":"iOXYfOX6T-mMsiI21-DRkQ"}]}]}
-
-        # --- ACL
-
-        # --- Services
-
-        # At the end we reload the app entirely
-        print(json.dumps(self.load(app_moniker)))
-
+    def create_urlbasedpolicies(self, app_moniker, app_config):
+        if len(app_config.get('urllocation', [])) > 0:
+            upp_url = 'mgmt-pop/apps/{applicationId}/urllocation'.format(applicationId=app_moniker.uuid)
+            for upp_rule in app_config.get('urllocation', []):
+                upp_create_payload = {
+                    "rule_type": upp_rule.get("rule_type", 1),
+                    "name": upp_rule.get("name"),
+                    "url": upp_rule.get("url")
+                }
+                upp_create = self.post(upp_url, json=upp_create_payload)
+                upp_create_data = upp_create.json()
+                if upp_create_data.get('uuid_url'):
+                    upp_update_url = 'mgmt-pop/apps/{applicationId}/urllocation/{ruleId}'
+                    self.put(upp_update_url.format(
+                        applicationId=app_moniker.uuid,
+                        ruleId=upp_create_data.get('uuid_url')),
+                        json=upp_rule
+                    )
+        else:
+            logging.debug("No URL path-based policies set")
 
     def update(self, app_moniker, app_config):
         """
