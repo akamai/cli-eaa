@@ -43,8 +43,9 @@ import re
 import six
 from akamai.edgegrid import EdgeGridAuth, EdgeRc
 from config import EdgeGridConfig
+from jinja2 import Template
 
-__version__ = '0.2.4'
+__version__ = '0.2.6'
 
 # If all parameters are set already, use them.  Otherwise
 # use the config
@@ -83,6 +84,11 @@ class cli:
             return logging.INFO
         else:
             return logging.ERROR
+
+    @staticmethod
+    def exit(code):
+        logging.info("Exit cli-eaa with code %s" % code)
+        exit(code)
 
     @staticmethod
     def exit_gracefully(signum, frame):
@@ -454,6 +460,21 @@ class ApplicationAPI(BaseAPI):
         Tunnel = 4
         ETP = 5
 
+    class Profile(Enum):
+        HTTP = 1
+        SharePoint = 2
+        JIRA = 3
+        RDP = 4
+        VNC = 5
+        SSH = 6
+        Jenkins = 7
+        Confluence = 8
+        TCP = 9
+
+    class Domain(Enum):
+        Custom = 1
+        Akamai = 2
+
     def __init__(self, config):
         super(ApplicationAPI, self).__init__(config, api=BaseAPI.API_Version.OpenAPI)
 
@@ -464,19 +485,21 @@ class ApplicationAPI(BaseAPI):
         applications = list()
         appgroups = list()
         if self._config.application_id == '-':
-            for line in sys.stdin:
-                scanned_items = line.split(',')
-                if len(scanned_items) == 0:
-                    logging.warning("Cannot parse line: %s" % line)
-                    continue
-                try:
-                    scanned_obj = EAAItem(scanned_items[0])
-                    if scanned_obj.objtype == EAAItem.Type.Application:
-                        applications.append(scanned_obj)
-                    elif scanned_obj.objtype == EAAItem.Type.ApplicationGroupAssociation:
-                        appgroups.append(scanned_obj)
-                except EAAInvalidMoniker:
-                    logging.warning("Invalid application moniker: %s" % scanned_items[0])
+            # nested if below because we don't do anything on create in this section
+            if self._config.action != 'create':
+                for line in sys.stdin:
+                    scanned_items = line.split(',')
+                    if len(scanned_items) == 0:
+                        logging.warning("Cannot parse line: %s" % line)
+                        continue
+                    try:
+                        scanned_obj = EAAItem(scanned_items[0])
+                        if scanned_obj.objtype == EAAItem.Type.Application:
+                            applications.append(scanned_obj)
+                        elif scanned_obj.objtype == EAAItem.Type.ApplicationGroupAssociation:
+                            appgroups.append(scanned_obj)
+                    except EAAInvalidMoniker:
+                        logging.warning("Invalid application moniker: %s" % scanned_items[0])
         else:
             logging.info("Single app %s" % config.application_id)
             applications.append(EAAItem(config.application_id))
@@ -485,14 +508,21 @@ class ApplicationAPI(BaseAPI):
         if config.action == "deploy":
             for a in applications:
                 self.deploy(a)
-                print("Application %s deployment requested, it may take a few minutes before it gets live." % a)
+                cli.print("Application %s deployment requested, it may take a few minutes before it gets live." % a)
+        elif config.action == "create":
+            # new_config = json.load(sys.stdin)
+            new_config = sys.stdin.read()
+            self.create(new_config)
         elif config.action == "update":
             if len(applications) > 1:
                 raise Exception("Batch operation not supported")
             app = applications[0]
             new_config = json.load(sys.stdin)
-            self.save(app, new_config)
+            self.update(app, new_config)
             cli.print("Configuration for application %s has been updated." % app)
+        elif config.action == "delete":
+            for a in applications:
+                self.delete_app(a)
         elif config.action == "add_dnsexception":
             for a in applications:
                 self.add_dnsexception(a)
@@ -512,10 +542,39 @@ class ApplicationAPI(BaseAPI):
                 # print(app_config)
 
     def load(self, app_moniker):
-        url_params = {}  # {'expand': 'true', 'expand_sdk': 'true'}
+        """Load application configuration."""
+        # For the save/duplicate-type operations we need some extra data,
+        # hence the two expand parameters
+        url_params = {'expand': 'true', 'expand_sdk': 'true'}
         url = 'mgmt-pop/apps/{applicationId}'.format(applicationId=app_moniker.uuid)
         result = self.get(url, params=url_params)
-        return result.json()
+        app_config = result.json()
+
+        # Merge application groups info and align the view
+        # to match the structure expected in save operation
+        groups_url = 'mgmt-pop/apps/{applicationId}/groups'.format(applicationId=app_moniker.uuid)
+        groups_result = self.get(groups_url, params={'limit': 0})
+        groups = groups_result.json()
+        app_config['groups'] = []
+        for g in groups.get('objects', []):
+            app_config['groups'].append(
+                {
+                    'name': g.get('group', {}).get('name'),
+                    'enable_mfa': g.get('enable_mfa', 'inherit'),
+                    'uuid_url': g.get('group', {}).get('group_uuid_url')
+                }
+            )
+
+        # Merge URL path-based policies and align the view
+        # to match the structure expected in save operation
+        upp_url = 'mgmt-pop/apps/{applicationId}/urllocation'
+        upp_result = self.get(upp_url.format(applicationId=app_moniker.uuid), params={'limit': 0})
+        upp = upp_result.json()
+        app_config['urllocation'] = []
+        for upp_rule in upp.get('objects', []):
+            app_config['urllocation'].append(upp_rule)
+
+        return app_config
 
     def loadgroups(self, app_moniker):
         """Directory+Groups allowed to access this application."""
@@ -523,7 +582,6 @@ class ApplicationAPI(BaseAPI):
         url = 'mgmt-pop/apps/{applicationId}/groups'.format(applicationId=app_moniker.uuid)
         result = self.get(url, url_params)
         count = 0
-#        print("RAW DATA: %s" % result.json())
         allowed_groups = result.json().get('objects')
         if not self._config.batch:
             cli.header("# Allowed Groups to access app %s" % app_moniker)
@@ -541,19 +599,156 @@ class ApplicationAPI(BaseAPI):
             ))
 
         if not self._config.batch:
-            print("# %s groups configured to access application %s" % (count, app_moniker))
+            cli.print("# %s groups configured to access application %s" % (count, app_moniker))
         return allowed_groups
 
+    def delete_app(self, app_moniker):
+        deletion = self.delete('mgmt-pop/apps/{applicationId}'.format(applicationId=app_moniker.uuid))
+        if deletion.status_code == 200:
+            cli.print("Application %s deleted." % app_moniker.uuid)
+
     def delgroup(self, appgroup_moniker):
-        print("Delete App-Group association %s..." % appgroup_moniker)
+        cli.print("Delete App-Group association %s..." % appgroup_moniker)
         deletion = self.post('mgmt-pop/appgroups', params={'method': 'DELETE'},
                              json={'deleted_objects': [appgroup_moniker.uuid]})
         if deletion.status_code == 200:
-            print("Association %s deleted." % appgroup_moniker)
+            cli.print("Association %s deleted." % appgroup_moniker)
 
-    def save(self, app_moniker, app_config):
+    def cloudzone_lookup(self, name):
+        """Lookup a cloud zone UUID based on it's name."""
+        pops = self.get('mgmt-pop/pops?shared=true')
+        for pop in pops.json().get('objects'):
+            if pop.get('region') == name:
+                return pop.get('uuid_url')
+        return ""
+
+    def certificate_lookup(self, cn):
+        certs = self.get('mgmt-pop/certificates?limit=0')
+        for cert in certs.json().get('objects'):
+            if cert.get('cn') == cn:
+                return cert.get('uuid_url')
+        return ""
+
+    def parse_template(self, raw_config):
         """
-        Save/update an EAA application configuration.
+        Parse a template
+        """
+        t = Template(raw_config)
+        t.globals['AppProfile'] = ApplicationAPI.Profile
+        t.globals['AppDomainType'] = ApplicationAPI.Domain
+        t.globals['cli_cloudzone'] = self.cloudzone_lookup
+        t.globals['cli_certificate'] = self.certificate_lookup
+        output = t.render()
+        logging.debug("JSON Post-Template Render: %s" % output)
+        return output
+
+    def create(self, raw_app_config):
+        """
+        Create a new EAA application configuration.
+        :param app_config: configuration as JSON string
+
+        Note: the portal use the POST to create a new app with a minimal payload:
+              {"app_profile":1,"app_type":1,"client_app_mode":1,"app_profile_id":"Fp3RYok1EeSE6AIy9YR0Dw",
+              "name":"tes","description":"test"}
+              We should do the same here
+        """
+        app_config = json.loads(self.parse_template(raw_app_config))
+        logging.debug("Post Jinja parsing:\n%s" % json.dumps(app_config))
+        app_config_create = {
+            "app_profile": app_config.get('app_profile'),
+            "app_type": app_config.get('app_type', ApplicationAPI.Type.Hosted.value),
+            "name": app_config.get('name'),
+            "description": app_config.get('description')
+        }
+        newapp = self.post('mgmt-pop/apps', json=app_config_create)
+        logging.info("Create app core: %s %s" % (newapp.status_code, newapp.text))
+        if newapp.status_code != 200:
+            cli.exit(2)
+        newapp_config = newapp.json()
+        app_moniker = EAAItem("app://{}".format(newapp_config.get('uuid_url')))
+        logging.info("UUID of the newapp: %s" % app_moniker)
+
+        # Now we push everything else as a PUT
+        self.put('mgmt-pop/apps/{applicationId}'.format(applicationId=app_moniker.uuid), json=app_config)
+
+        # Sub-components of the application configuration definition
+
+        # --- Connectors
+        if app_config.get('agents'):
+            self.attach_connectors(app_moniker, app_config.get('agents', []))
+
+        # IdP, Directories, Groups
+        self.create_auth(app_moniker, app_config)
+
+        # --- ACL
+        # TODO: implement
+
+        # --- Services
+        # TODO: implement
+
+        # URL based policies
+        self.create_urlbasedpolicies(app_moniker, app_config)
+
+        # At the end we reload the app entirely
+        cli.print(json.dumps(self.load(app_moniker)))
+
+    def create_auth(self, app_moniker, app_config):
+        """
+        Create application authentication configuration
+        IdP, Directories, Groups
+        """
+        # IdP
+        # The "view" operation gives us the IdP in idp -> idp_id
+        scanned_idp_uuid = app_config.get('idp', {}).get('idp_id')
+        if scanned_idp_uuid:
+            idp_app_payload = {"app": app_moniker.uuid, "idp": scanned_idp_uuid}
+            idp_app_resp = self.post('mgmt-pop/appidp', json=idp_app_payload)
+            logging.info("IdP-app association response: %s %s" % (idp_app_resp.status_code, idp_app_resp.text))
+
+        # Directory
+        # The view operation gives us the directories in directories[] -> uuid_url
+        scanned_directories = app_config.get('directories', [])
+        app_directories_payload = {"data": [{"apps": [app_moniker.uuid], "directories": scanned_directories}]}
+        app_directories_resp = self.post('mgmt-pop/appdirectories', json=app_directories_payload)
+        logging.info(
+            "App directories association response: %s %s" %
+            (app_directories_resp.status_code, app_directories_resp.text)
+        )
+        if app_directories_resp.status_code != 200:
+            cli.exit(2)
+        # Groups
+        if len(app_config.get('groups', [])) > 0:
+            app_groups_payload = {'data': [{'apps': [app_moniker.uuid], 'groups': app_config.get('groups', [])}]}
+            app_groups_resp = self.post('mgmt-pop/appgroups', json=app_groups_payload)
+            if app_groups_resp.status_code != 200:
+                cli.exit(2)
+        else:
+            logging.debug("No group set")
+
+    def create_urlbasedpolicies(self, app_moniker, app_config):
+        if len(app_config.get('urllocation', [])) > 0:
+            upp_url = 'mgmt-pop/apps/{applicationId}/urllocation'.format(applicationId=app_moniker.uuid)
+            for upp_rule in app_config.get('urllocation', []):
+                upp_create_payload = {
+                    "rule_type": upp_rule.get("rule_type", 1),
+                    "name": upp_rule.get("name"),
+                    "url": upp_rule.get("url")
+                }
+                upp_create = self.post(upp_url, json=upp_create_payload)
+                upp_create_data = upp_create.json()
+                if upp_create_data.get('uuid_url'):
+                    upp_update_url = 'mgmt-pop/apps/{applicationId}/urllocation/{ruleId}'
+                    self.put(upp_update_url.format(
+                        applicationId=app_moniker.uuid,
+                        ruleId=upp_create_data.get('uuid_url')),
+                        json=upp_rule
+                    )
+        else:
+            logging.debug("No URL path-based policies set")
+
+    def update(self, app_moniker, app_config):
+        """
+        Update an existing EAA application configuration.
         """
         update = self.put(
             'mgmt-pop/apps/{applicationId}'.format(applicationId=app_moniker.uuid),
@@ -562,7 +757,30 @@ class ApplicationAPI(BaseAPI):
         logging.info("Update app response: %s" % update.status_code)
         logging.info("Update app response: %s" % update.text)
         if update.status_code != 200:
-            exit(2)
+            cli.exit(2)
+
+    def attach_connectors(self, app_moniker, connectors):
+        """
+        Attach connector/s to an application.
+        """
+        # POST on mgmt-pop/apps/DBMcU6FwSjKa7c9sny4RLg/agents
+        # Body
+        # {"agents":[{"uuid_url":"cht3_GEjQWyMW9LEk7KQfg"}]}
+        logging.info("Attaching {} connectors...".format(len(connectors)))
+        api_resp = self.post(
+            'mgmt-pop/apps/{applicationId}/agents'.format(applicationId=app_moniker.uuid),
+            json={'agents': connectors}
+        )
+        logging.info("Attach connector response: %s" % api_resp.status_code)
+        logging.info("Attach connector app response: %s" % api_resp.text)
+        if api_resp.status_code not in (200, 201):
+            cli.exit(2)
+
+    def detach_connectors(self, app_moniker, connectors):
+        """
+        TODO: implement this function
+        """
+        pass
 
     def add_dnsexception(self, app_moniker):
         logging.info("Adding DNS exception: %s" % config.exception_fqdn)

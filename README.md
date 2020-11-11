@@ -167,11 +167,15 @@ And restore
 $ cat ~/eaa_app_datascience_v3.json | akamai eaa app app://mD_Pw1XASpyVJc2JwgICTg update
 ```
 
-
 Or quickly walk through the JSON tree with `jq`.
 ```
 $ akamai eaa -b app app://mD_Pw1XASpyVJc2JwgICTg | jq .advanced_settings.websocket_enabled
 "true"
+```
+
+Delete an application
+```
+akamai eaa app app://mD_Pw1XASpyVJc2JwgICTg delete
 ```
 
 One question we often get: *What are the applications using connector `xyz`?*\

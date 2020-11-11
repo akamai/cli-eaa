@@ -85,6 +85,8 @@ class EdgeGridConfig():
         deldns_parser.add_argument(dest="exception_fqdn",  metavar='fqdn', nargs="+", help='DNS exception FQDN')
         subsub.add_parser("deploy", help="Deploy the application")
         subsub.add_parser("update", help="Update an existing application")
+        subsub.add_parser("create", help="Create a new application")
+        subsub.add_parser("delete", help="Delete an application")
         subsub.add_parser("view", help="Dump application configuration (JSON)")
         subsub.add_parser("viewgroups", help="Dump application configuration (JSON)")
         subsub.add_parser("delgroup", help="Remove group from application, appgroup ID must provided")
