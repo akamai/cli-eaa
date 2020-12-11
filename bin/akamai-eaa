@@ -45,7 +45,7 @@ from akamai.edgegrid import EdgeGridAuth, EdgeRc
 from config import EdgeGridConfig
 from jinja2 import Template
 
-__version__ = '0.2.6'
+__version__ = '0.2.7'
 
 # If all parameters are set already, use them.  Otherwise
 # use the config
@@ -198,6 +198,10 @@ class BaseAPI(object):
             self._baseurl = 'https://%s/crux/v1/' % edgerc.get(section, 'host')
             self._session = requests.Session()
             self._session.auth = EdgeGridAuth.from_edgerc(edgerc, section)
+
+        if self._session and config.proxy:
+            logging.info("Set proxy to %s" % config.proxy)
+            self._session.proxies['https'] = 'http://%s' % config.proxy
 
         logging.info("Initialized with base_url %s" % self._baseurl)
 
@@ -475,6 +479,9 @@ class ApplicationAPI(BaseAPI):
         Custom = 1
         Akamai = 2
 
+    class ServiceType(Enum):
+        ACL = 6
+
     def __init__(self, config):
         super(ApplicationAPI, self).__init__(config, api=BaseAPI.API_Version.OpenAPI)
 
@@ -639,7 +646,9 @@ class ApplicationAPI(BaseAPI):
         t.globals['cli_cloudzone'] = self.cloudzone_lookup
         t.globals['cli_certificate'] = self.certificate_lookup
         output = t.render()
-        logging.debug("JSON Post-Template Render: %s" % output)
+        logging.debug("JSON Post-Template Render:")
+        for lineno, line in enumerate(output.splitlines()):
+            logging.debug("{:4d}> {}".format(lineno+1, line))
         return output
 
     def create(self, raw_app_config):
@@ -665,6 +674,7 @@ class ApplicationAPI(BaseAPI):
         if newapp.status_code != 200:
             cli.exit(2)
         newapp_config = newapp.json()
+        logging.info("New app JSON:\n%s" % newapp.text)
         app_moniker = EAAItem("app://{}".format(newapp_config.get('uuid_url')))
         logging.info("UUID of the newapp: %s" % app_moniker)
 
@@ -680,10 +690,10 @@ class ApplicationAPI(BaseAPI):
         # IdP, Directories, Groups
         self.create_auth(app_moniker, app_config)
 
-        # --- ACL
-        # TODO: implement
+        # --- Access Control rules
+        self.create_acl(app_moniker, app_config)
 
-        # --- Services
+        # --- Other services
         # TODO: implement
 
         # URL based policies
@@ -691,6 +701,63 @@ class ApplicationAPI(BaseAPI):
 
         # At the end we reload the app entirely
         cli.print(json.dumps(self.load(app_moniker)))
+
+    def create_acl(self, app_moniker, app_config):
+        """
+        Save ACL rules into a newly created EAA application
+        :param app_moniker: identifier of the newly created app
+        :app_config: details of the configuration to save
+        """
+        # UUID for the ACL service in the newly created application
+        logging.debug("Fetch service UUID...")
+        services_resp = self.get('mgmt-pop/apps/{app_uuid}/services'.format(app_uuid=app_moniker.uuid))
+        service_uuid = None
+        logging.info(json.dumps(services_resp.json(), indent=4))
+        for s in services_resp.json().get('objects', []):
+            scanned_service_type = s.get('service', {}).get('service_type')
+            logging.debug("Scanned service_type: %s" % scanned_service_type)
+            if scanned_service_type == ApplicationAPI.ServiceType.ACL.value:
+                service_uuid = s.get('service', {}).get('uuid_url')
+                break  # Only one service of type ACL
+        logging.debug("Service UUID for the app is %s" % service_uuid)
+
+        if service_uuid:
+
+            # Obtain ACL service details from the input configuration
+            service_acl = None
+            for s in app_config.get('Services', []):
+                scanned_service_type = s.get('service', {}).get('service_type')
+                logging.info("Scanned service_type: %s" % scanned_service_type)
+                if scanned_service_type == ApplicationAPI.ServiceType.ACL.value:
+                    service_acl = s
+                    break  # Only one service of type ACL
+
+            if not service_acl:
+                logging.warning("No acl rules defined in the application configuration JSON document, skipping")
+                return
+
+            # Enable the ACL service
+            # payload = {"uuid_url":"fJZ7A0emQWijZ40mxB3dWw","description":null,"name":"Access Control","service_type":6,"settings":{},"status":"on"}
+            payload = service_acl.get('service')
+            payload['uuid_url'] = service_uuid
+            self.put(
+                'mgmt-pop/services/{service_uuid}'.format(service_uuid=service_uuid),
+                json=payload
+            )
+
+            for acl_rule in service_acl.get('access_rules', []):
+                # Step 1 create the Rules to get the corresponding UUID
+                new_acl_rule = self.post(
+                    'mgmt-pop/services/{service_uuid}/rules'.format(service_uuid=service_uuid),
+                    json={"rule_type": acl_rule.get('rule_type', 1), "name": acl_rule.get('name')}
+                )
+                new_acl_rule_uuid = new_acl_rule.json().get('uuid_url')
+                # Step 2 save the details of the rules
+                self.put('mgmt-pop/rules/{rule_uuid}'.format(rule_uuid=new_acl_rule_uuid), json=acl_rule)
+
+        else:
+
+            logging.warning("Unable to find a ACL service in the newly created application %s" % app_moniker)
 
     def create_auth(self, app_moniker, app_config):
         """
