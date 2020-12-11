@@ -100,12 +100,13 @@ class EdgeGridConfig():
 
         parser.add_argument('--batch', '-b', default=False, action='store_true',
                             help='Batch mode, remove the extra header/footer in lists.')
-        parser.add_argument('--verbose', '-v', default=False, action='count', help=' Verbose mode')
         parser.add_argument('--debug', '-d', default=False, action='count', help=' Debug mode (prints HTTP headers)')
         parser.add_argument('--edgerc', '-e', default='~/.edgerc', metavar='credentials_file',
                             help=' Location of the credentials file (default is %s)' % os.path.expanduser("~/.edgerc"))
+        parser.add_argument('--proxy', '-p', default='', help=' HTTP/S Proxy (e.g. 10.0.0.1:8888)')
         parser.add_argument('--section', '-c', default='default', metavar='credentials_file_section', action='store',
                             help=' Credentials file Section\'s name to use (\'default\' if not specified).')
+        parser.add_argument('--verbose', '-v', default=False, action='count', help=' Verbose mode')
 
         if flags:
             for argument in flags.keys():
