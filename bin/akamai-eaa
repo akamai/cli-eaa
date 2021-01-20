@@ -45,7 +45,7 @@ from akamai.edgegrid import EdgeGridAuth, EdgeRc
 from config import EdgeGridConfig
 from jinja2 import Template
 
-__version__ = '0.2.7'
+__version__ = '0.2.8'
 
 # If all parameters are set already, use them.  Otherwise
 # use the config
@@ -1140,7 +1140,7 @@ if __name__ == "__main__":
                 if config.action == "sync":
                     d.synchronize()
                 elif config.action == "addgroup":
-                    d.addgroup(config.group)
+                    d.addgroup(config.dn)
                 elif config.action == "addovlgroup":
                     d.addoverlaygroup(config.group)
                 else:
