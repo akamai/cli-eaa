@@ -45,7 +45,7 @@ from akamai.edgegrid import EdgeGridAuth, EdgeRc
 from config import EdgeGridConfig
 from jinja2 import Template
 
-__version__ = '0.2.8'
+__version__ = '0.2.9'
 
 # If all parameters are set already, use them.  Otherwise
 # use the config
@@ -1039,9 +1039,11 @@ class EventLogAPI(BaseAPI):
         try:
             if isinstance(self._output, str):
                 logging.info("Output file: %s" % self._output)
-                out = open(self._output, 'w+')
+                out = open(self._output, 'w+', encoding='utf-8')
             elif hasattr(self._output, 'write'):
                 out = self._output
+                if hasattr(out, 'reconfigure'):
+                    out.reconfigure(encoding='utf-8')
 
             while True:
                 ets, sts = EventLogAPI.date_boundaries()
