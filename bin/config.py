@@ -91,10 +91,21 @@ class EdgeGridConfig():
         subsub.add_parser("viewgroups", help="Dump application configuration (JSON)")
         subsub.add_parser("delgroup", help="Remove group from application, appgroup ID must provided")
 
+        cert_parser = subparsers.add_parser('certificate', aliases=["cert"], help='Manage EAA Certificates')
+        cert_parser.add_argument(dest='certificate_id', nargs="?", default=None,
+                                 help="Certificate ID (e.g. crt://abcdefghi)")
+        subsub = cert_parser.add_subparsers(dest="action", help='Certificate operation')
+        subsub.add_parser("list", help="List certificates")
+        subsub.add_parser("delete", help="Delete existing certificate")
+        certadd_parser = subsub.add_parser("rotate", help="Rotate existing certificate with a new one")
+        certadd_parser.add_argument('--cert', '-c', required=True, type=argparse.FileType('r'), help="Certificate in PEM format")
+        certadd_parser.add_argument('--key', '-k', required=True, type=argparse.FileType('r'), help="Private Key")
+        certadd_parser.add_argument('--pass', '-p', help="Certificate passphrase")
+
         report_parser = subparsers.add_parser('report', aliases=["r"], help='EAA reports')
         report_parser.add_argument(dest='report_name', choices=['clients'], help="Report name")
 
-        con_parser = subparsers.add_parser('connector', aliases=["c"], help='Manage EAA connectors')
+        subparsers.add_parser('connector', aliases=["c"], help='Manage EAA connectors')
 
         subparsers.add_parser('version', help='Display cli-eaa module version')
 

@@ -45,7 +45,7 @@ from akamai.edgegrid import EdgeGridAuth, EdgeRc
 from config import EdgeGridConfig
 from jinja2 import Template
 
-__version__ = '0.2.9'
+__version__ = '0.3.0'
 
 # If all parameters are set already, use them.  Otherwise
 # use the config
@@ -138,6 +138,7 @@ class EAAItem(object):
         Group = "group"
         User = "user"
         Directory = "dir"
+        Certificate = "crt"
 
         @property
         def scheme(self):
@@ -1116,6 +1117,51 @@ class ConnectorAPI(BaseAPI):
         cli.footer("Total %s connector(s)" % total_con)
 
 
+class CertificateAPI(BaseAPI):
+    """
+    Manage EAA certificates
+    Example of command using this class:
+    - Rotate a certificate
+      akamai eaa cert crt:/123456 rotate --cert mycert.pem --key mycert.key
+    """
+
+    class Type(Enum):
+        Custom = 1
+        UNK = 2
+        SelfSigned = 5
+        CertificateAuthority = 6
+
+    def __init__(self, config):
+        super(CertificateAPI, self).__init__(config, api=BaseAPI.API_Version.OpenAPI)
+
+    def list(self):
+        url_params = {'expand': 'true', 'limit': 0}
+        data = self.get('mgmt-pop/certificates', params=url_params)
+        certificates = data.json()
+        total_cert = 0
+        logging.info(json.dumps(data.json(), indent=4))
+        cli.print('#Certificate-ID,cn,type,expiration,days left')
+        format_line = "{scheme}{uuid},{cn},{cert_type},{expiration},{days_left}"
+        for total_cert, c in enumerate(certificates.get('objects', {}), start=1):
+            cli.print(format_line.format(
+                scheme=EAAItem.Type.Certificate.scheme,
+                uuid=c.get('uuid_url'),
+                cn=c.get('cn'),
+                cert_type=CertificateAPI.Type(c.get('cert_type')).name,
+                expiration=c.get('expired_at'),
+                days_left=c.get('days_left')
+            ))
+        cli.footer("Total %s certificate(s)" % total_cert)
+
+    def rotate(self):
+        raise NotImplementedError("rotation not implemented")
+        pass
+
+    def delete(self):
+        raise NotImplementedError("deletion not implemented")
+        pass
+
+
 if __name__ == "__main__":
 
     logging.basicConfig(filename=log_file, level=cli.log_level(), format=LOG_FMT)
@@ -1153,6 +1199,14 @@ if __name__ == "__main__":
         elif config.command in ("connector", "c"):
             c = ConnectorAPI(config)
             c.list()
+        elif config.command in ("certificate", "cert"):
+            c = CertificateAPI(config)
+            if config.action == "list" or config.certificate_id is None:
+                c.list()
+            elif config.action == "delete":
+                c.delete()
+            elif config.action == "rotate":
+                c.rotate()
         elif config.command in ("report", "r"):
             r = ReportingAPI(config)
             if config.report_name == "clients":
