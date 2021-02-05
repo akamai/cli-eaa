@@ -45,6 +45,11 @@ This can be helpful if you plan to consume EAA logs into your favorite SIEM, or 
 - Directory
   - Create group and group overlay
   - Synchronize with your LDAP or Active Directory
+- Identity Providers (IdP)
+  - List configured IdP, status
+- Certificate management
+  - List configured certificates
+  - Rotate certificate with optional deployment of dependent applications and IdP
 - Connectors
   - List all connectors including the reachability status
 
@@ -70,7 +75,7 @@ To check your cli-eaa version with the `version` command
 
 ```
 $ akamai eaa version
-0.2.2
+0.3.0
 ```
 
 ### Configuration file

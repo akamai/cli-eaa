@@ -98,14 +98,18 @@ class EdgeGridConfig():
         subsub.add_parser("list", help="List certificates")
         subsub.add_parser("delete", help="Delete existing certificate")
         certadd_parser = subsub.add_parser("rotate", help="Rotate existing certificate with a new one")
-        certadd_parser.add_argument('--cert', '-c', required=True, type=argparse.FileType('r'), help="Certificate in PEM format")
+        certadd_parser.add_argument('--cert', '-c', required=True, type=argparse.FileType('r'), 
+                                    help="Certificate in PEM format")
         certadd_parser.add_argument('--key', '-k', required=True, type=argparse.FileType('r'), help="Private Key")
         certadd_parser.add_argument('--passphrase', '--pass', '-p', help="Certificate passphrase")
+        certadd_parser.add_argument('--deployafter', '--deploy', '-d', action="store_true", default=False,
+                                    help="Deploy impacted apps/idp after the rotation")
 
         report_parser = subparsers.add_parser('report', aliases=["r"], help='EAA reports')
         report_parser.add_argument(dest='report_name', choices=['clients'], help="Report name")
 
         subparsers.add_parser('connector', aliases=["c"], help='Manage EAA connectors')
+        subparsers.add_parser('idp', aliases=["i"], help='Manage EAA Identity Providers')
 
         subparsers.add_parser('version', help='Display cli-eaa module version')
 
