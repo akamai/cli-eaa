@@ -234,7 +234,7 @@ class BaseAPI(object):
             logging.info("BaseAPI: POST response body: %s" % response.text)
         return response
 
-    def put(self, url_path, json=None):
+    def put(self, url_path, json=None, params=None):
         url = urljoin(self._baseurl, url_path)
         logging.info("API URL: %s" % url)
         response = self._session.put(url, json=json)
@@ -274,7 +274,7 @@ class SearchAPI(BaseAPI):
         if data.get("meta"):
             app_count = data.get("meta").get("total_count")
             # Header
-            cli.print('#app_id,type,name,host,cname,status,reach')
+            cli.print('#app_id,type,name,host,cname,cert_id,status,reachable')
             for a in data.get('objects', []):
                 if not search_pattern or (
                     search_pattern and (
@@ -283,13 +283,15 @@ class SearchAPI(BaseAPI):
                         fnmatch.fnmatch(a.get('cname') or "", "*%s*" % search_pattern)
                     )
                 ):
-                    cli.print('{scheme}{app_id},{app_type},{name},{host},{cname},{status},{reach}'.format(
+                    cli.print('{scheme}{app_id},{app_type},{name},{host},{cname},{cert_scheme}{cert_id},{status},{reach}'.format(
                         scheme=EAAItem.Type.Application.scheme,
                         app_id=a.get('uuid_url'),
                         app_type=ApplicationAPI.Type(a.get('app_type')).name,
                         name=a.get('name'),
                         host=a.get('host'),
                         cname=a.get('cname'),
+                        cert_scheme=EAAItem.Type.Certificate.scheme,
+                        cert_id=a.get('cert'),
                         status=ApplicationAPI.Status(a.get('app_status')).name,
                         reach=('Y' if a.get('resource_status', {}).get('host_reachable') else 'F'))
                     )
@@ -1154,8 +1156,36 @@ class CertificateAPI(BaseAPI):
         cli.footer("Total %s certificate(s)" % total_cert)
 
     def rotate(self):
-        raise NotImplementedError("rotation not implemented")
-        pass
+        """
+        Update an existing certificate.
+        """
+        cert_moniker = EAAItem(self._config.certificate_id)
+        cli.print("Rotating cert %s..." % cert_moniker.uuid)
+        api_url = 'mgmt-pop/certificates/{certificate_id}'.format(certificate_id=cert_moniker.uuid)
+
+        get_resp = self.get(api_url)
+        current_cert = get_resp.json()
+        # cli.print(json.dumps(current_cert, sort_keys=True, indent=4))
+
+        payload = {}
+        payload['name'] = current_cert.get('name')
+        payload['cert_type'] = current_cert.get('cert_type')
+        with self._config.cert as f:
+            payload['cert'] = f.read()
+        with self._config.key as f:
+            payload['private_key'] = f.read()
+        if self._config.passphrase:
+            payload['password'] = self._config.passphrase
+        put_resp = self.put(api_url, json=payload, params={'expand': 'true', 'limit': 0})
+        if put_resp.status_code == 200:
+            new_cert = put_resp.json()
+            cli.header(("Certificate %s updated, %s application(s) and %s directory(ies) "
+                        "have been marked ready for deployment. Please deploy at your convience.") %
+                       (cert_moniker.uuid, new_cert.get('app_count'), new_cert.get('dir_count')))
+        else:
+            cli.print("Error rotating cert, see response below:")
+            cli.print(put_resp.text)
+            sys.exit(2)
 
     def delete(self):
         raise NotImplementedError("deletion not implemented")

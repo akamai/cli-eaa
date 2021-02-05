@@ -100,7 +100,7 @@ class EdgeGridConfig():
         certadd_parser = subsub.add_parser("rotate", help="Rotate existing certificate with a new one")
         certadd_parser.add_argument('--cert', '-c', required=True, type=argparse.FileType('r'), help="Certificate in PEM format")
         certadd_parser.add_argument('--key', '-k', required=True, type=argparse.FileType('r'), help="Private Key")
-        certadd_parser.add_argument('--pass', '-p', help="Certificate passphrase")
+        certadd_parser.add_argument('--passphrase', '--pass', '-p', help="Certificate passphrase")
 
         report_parser = subparsers.add_parser('report', aliases=["r"], help='EAA reports')
         report_parser.add_argument(dest='report_name', choices=['clients'], help="Report name")
