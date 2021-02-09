@@ -79,10 +79,19 @@ class EdgeGridConfig():
         app_parser = subparsers.add_parser('app', aliases=["a"], help='Manage EAA applications')
         app_parser.add_argument(dest='application_id', help="Application ID, AppGroup ID or '-'")
         subsub = app_parser.add_subparsers(dest="action", help='Application action')
+        # DNS exception add/remove
         adddns_parser = subsub.add_parser("add_dnsexception", help="Add DNS Exception to tunnel-type client-app")
         adddns_parser.add_argument(dest="exception_fqdn", metavar='fqdn', nargs="+", help='DNS exception FQDN')
         deldns_parser = subsub.add_parser("del_dnsexception", help="Remove DNS Exception from tunnel-type client-app")
         deldns_parser.add_argument(dest="exception_fqdn",  metavar='fqdn', nargs="+", help='DNS exception FQDN')
+        # Connector attach/detach
+        attcon_parser = subsub.add_parser("attach", help="Attach an EAA Connector to the application")
+        attcon_parser.add_argument(dest="connector_id", nargs="+",
+                                   help='Attach one or multiple connectors to the application e.g. con://123456')
+        detcon_parser = subsub.add_parser("detach", help="Detach EAA Connector to the application")
+        detcon_parser.add_argument(dest="connector_id", nargs="+",
+                                   help='Detach one or multiple connectors to the application, e.g. con://123456.')
+
         subsub.add_parser("deploy", help="Deploy the application")
         subsub.add_parser("update", help="Update an existing application")
         subsub.add_parser("create", help="Create a new application")

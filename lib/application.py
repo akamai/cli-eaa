@@ -123,6 +123,18 @@ class ApplicationAPI(BaseAPI):
         elif config.action == 'delgroup':
             for ag in appgroups:
                 self.delgroup(ag)
+        elif config.action in ('attach', 'detach'):
+            for a in applications:
+                connectors = []
+                for c in set(config.connector_id):
+                    con_moniker = EAAItem(c)
+                    if con_moniker.objtype is not EAAItem.Type.Connector:
+                        raise TypeError("Invalid type of connector: %s" % c)
+                    connectors.append({"uuid_url": con_moniker.uuid})
+                if config.action == 'attach':
+                    self.attach_connectors(a, connectors)
+                elif config.action == 'detach':
+                    self.detach_connectors(a, connectors)
         else:  # view by default
             for a in applications:
                 app_config = self.load(a)
@@ -423,13 +435,29 @@ class ApplicationAPI(BaseAPI):
         logging.info("Attach connector response: %s" % api_resp.status_code)
         logging.info("Attach connector app response: %s" % api_resp.text)
         if api_resp.status_code not in (200, 201):
+            cli.print_error("Connector(s) %s were not attached to application %s [HTTP %s]" %
+                            (','.join([c.get('uuid_url') for c in connectors]), app_moniker, api_resp.status_code))
+            cli.print_error("use 'akamai eaa -v ...' for more info")
             cli.exit(2)
 
     def detach_connectors(self, app_moniker, connectors):
         """
-        TODO: implement this function
+        Detach connector/s to an application.
+        Payload is different from attach above:
+        {"agents":["cht3_GEjQWyMW9LEk7KQfg"]}
         """
-        pass
+        logging.info("Detaching {} connectors...".format(len(connectors)))
+        api_resp = self.post(
+            'mgmt-pop/apps/{applicationId}/agents'.format(applicationId=app_moniker.uuid),
+            params={'method': 'delete'}, json={'agents': [c.get('uuid_url') for c in connectors]}
+        )
+        logging.info("Detach connector response: %s" % api_resp.status_code)
+        logging.info("Detach connector app response: %s" % api_resp.text)
+        if api_resp.status_code not in (200, 204):
+            cli.print_error("Connector(s) %s were not detached from application %s [HTTP %s]" %
+                            (','.join([c.get('uuid_url') for c in connectors]), app_moniker, api_resp.status_code))
+            cli.print_error("use 'akamai eaa -v ...' for more info")
+            cli.exit(2)
 
     def add_dnsexception(self, app_moniker):
         logging.info("Adding DNS exception: %s" % config.exception_fqdn)
