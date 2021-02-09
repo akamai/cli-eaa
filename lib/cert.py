@@ -17,6 +17,7 @@ import json
 
 from common import cli, BaseAPI, EAAItem, config
 from application import ApplicationAPI
+from idp import IdentityProviderAPI
 
 
 class CertificateAPI(BaseAPI):
@@ -60,7 +61,7 @@ class CertificateAPI(BaseAPI):
         Update an existing certificate.
         """
         cert_moniker = EAAItem(self._config.certificate_id)
-        cli.print("Rotating cert %s..." % cert_moniker.uuid)
+        cli.print("Rotating certificate %s..." % cert_moniker.uuid)
         api_url = 'mgmt-pop/certificates/{certificate_id}'.format(certificate_id=cert_moniker.uuid)
 
         get_resp = self.get(api_url)
@@ -69,6 +70,7 @@ class CertificateAPI(BaseAPI):
 
         payload = {}
         payload['name'] = current_cert.get('name')
+        cli.print("Certificate CN: %s (%s)" % (current_cert.get('cn'), payload['name']))
         payload['cert_type'] = current_cert.get('cert_type')
         with self._config.cert as f:
             payload['cert'] = f.read()
@@ -79,17 +81,37 @@ class CertificateAPI(BaseAPI):
         put_resp = self.put(api_url, json=payload, params={'expand': 'true', 'limit': 0})
         if put_resp.status_code == 200:
             new_cert = put_resp.json()
-            cli.footer(("Certificate %s updated, %s application(s) and %s directory(ies) "
+            cli.footer(("Certificate %s updated, %s application/IdP(s) "
                         "have been marked ready for deployment.") %
-                       (cert_moniker.uuid, new_cert.get('app_count'), new_cert.get('dir_count')))
+                       (cert_moniker.uuid, new_cert.get('app_count')))
             if self._config.deployafter:
                 self.deployafter(cert_moniker.uuid)
             else:
                 cli.footer("Please deploy at your convience.")
         else:
-            cli.print_error("Error rotating cert, see response below:")
+            cli.print_error("Error rotating certificate, see response below:")
             cli.print_error(put_resp.text)
             cli.exit(2)
+
+    def status(self):
+        """
+        Display status for a particular certificate.
+        """
+        cert_moniker = EAAItem(self._config.certificate_id)
+        cli.header("#App/IdP ID,name,status")
+        app_api = ApplicationAPI(config)
+        for app_id, app_name in self.findappsbycert(cert_moniker.uuid):
+            # We don't need much info so expand=False to keep it quick
+            app_config = app_api.load(app_id, expand=False)
+#            cli.print(app_config)
+            app_status = ApplicationAPI.Status(app_config.get('app_status'))
+            cli.print("%s,%s,%s" % (app_id, app_name, app_status.name))
+
+        idp_api = IdentityProviderAPI(config)
+        for idp_id, idp_name in self.findidpbycert(cert_moniker.uuid):
+            idp_config = idp_api.load(idp_id)
+            idp_status = ApplicationAPI.Status(idp_config.get('idp_status'))
+            cli.print("%s,%s,%s" % (idp_id, idp_name, idp_status.name))
 
     def findappsbycert(self, certid):
         """Find application using certificate identified by `certid`"""
@@ -110,12 +132,20 @@ class CertificateAPI(BaseAPI):
                 yield (EAAItem("idp://%s" % i.get('uuid_url')), i.get('name'))
 
     def deployafter(self, certid):
+        """
+        Trigger deployment request of all Apps and IdP using the certificate.
+        """
         app_api = ApplicationAPI(config)
         for app_id, app_name in self.findappsbycert(certid):
-            cli.print("Deploying application %s..." % app_name)
+            cli.print("Deploying application %s (%s)..." % (app_name, app_id))
             app_api.deploy(app_id)
+        idp_api = IdentityProviderAPI(config)
         for idp_id, idp_name in self.findidpbycert(certid):
-            cli.print("Deploying IdP %s..." % idp_name)
+            cli.print("Deploying IdP %s (%s)..." % (idp_name, idp_id))
+            idp_api.deploy(idp_id)
+        cli.print("Deployment(s) in progress, it typically take 3 to 5 minutes")
+        cli.print("Use 'akamai eaa cert crt://%s status' to monitor the progress." % certid)
+        
 
     def delete(self):
         raise NotImplementedError("deletion not implemented")

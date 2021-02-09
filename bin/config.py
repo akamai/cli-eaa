@@ -106,6 +106,7 @@ class EdgeGridConfig():
         subsub = cert_parser.add_subparsers(dest="action", help='Certificate operation')
         subsub.add_parser("list", help="List certificates")
         subsub.add_parser("delete", help="Delete existing certificate")
+        subsub.add_parser("status", help="Display status of application/idp using the certificate")
         certadd_parser = subsub.add_parser("rotate", help="Rotate existing certificate with a new one")
         certadd_parser.add_argument('--cert', '-c', required=True, type=argparse.FileType('r'), 
                                     help="Certificate in PEM format")

@@ -121,6 +121,7 @@ class EAAItem(object):
         User = "user"
         Directory = "dir"
         Certificate = "crt"
+        IdentityProvider = "idp"
 
         @property
         def scheme(self):

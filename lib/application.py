@@ -141,11 +141,16 @@ class ApplicationAPI(BaseAPI):
                 print(json.dumps(app_config))
                 # print(app_config)
 
-    def load(self, app_moniker):
-        """Load application configuration."""
+    def load(self, app_moniker, expand=True):
+        """
+        Load application configuration.
+        :param expand: Set to True if you need extra details on inner objects (default is True)
+        """
         # For the save/duplicate-type operations we need some extra data,
         # hence the two expand parameters
-        url_params = {'expand': 'true', 'expand_sdk': 'true'}
+        url_params = {}
+        if expand:
+            url_params = {'expand': 'true', 'expand_sdk': 'true'}
         url = 'mgmt-pop/apps/{applicationId}'.format(applicationId=app_moniker.uuid)
         result = self.get(url, params=url_params)
         app_config = result.json()

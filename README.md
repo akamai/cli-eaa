@@ -13,6 +13,7 @@
   - [Applications](#applications)
   - [Directory operations](#directory-operations)
   - [Connectors](#connectors)
+  - [Certificate management](#certificate-management)
 - [Known Limitations](#known-limitations)
 - [Troubleshooting and Support](#troubleshooting-and-support)
   - [Self-troubleshooting](#self-troubleshooting)
@@ -248,6 +249,39 @@ con://pkGjL5OgSjyHoymMguvp9Q  demo-v2-con-6-apj   1          1       4.4.0-2765 
 con://NAWSlptPSXOjq-bk2-EQPw  demo-v2-con-10-rus  1          1       4.4.0-2765  10.3.0.101     12.123.123.12   Y
 con://e_0nShZBQ7esNAC3ZEkhSQ  demo-v2-con-3-amer  1          1       4.4.0-2765  10.1.4.83      12.123.123.123  Y
 con://OEe9o-n2S_aMeZpLxgwG0A  tmelab-sfo          1          1       4.4.0-2765  192.168.2.101  12.123.123.12   Y
+```
+
+### Certificate management
+
+One of the most common task with certificate it to rotate before the current certificate expires.
+cli-eaa helps with this task with the `akamai eaa certificate` command. 
+
+You simply pass the certificate  and key file as parameter, the optional passphrase and the 
+command will replace the existing certificate.
+By default, the rotation won't redeploy the impacted application / IdP. If you want the cli to trigger the
+deployment of all impacted applications and IdP, add the ``--deployafter``.
+
+Example using `--deployafter`:
+```
+akamai eaa certificate crt://certificate-UUID rotate --key ~/certs/mycert.key --cert ~/certs/mycert.cert --deployafter
+Rotating certificate certificate-UUID...
+Certificate CN: *.akamaidemo.net (*.akamaidemo.net Lets Encrypt)
+Certificate certificate-UUID updated, 3 application/IdP(s) have been marked ready for deployment.
+Deploying application Multi-origin Active-Active Demo (US-East) (app://appid-1)...
+Deploying application Multi-origin Active-Active Demo (US-West) (app://appid-2)...
+Deploying IdP Bogus IdP to test EME-365 (idp://idpid-1)...
+Deployment(s) in progress, it typically take 3 to 5 minutes
+Use 'akamai eaa cert crt://certificate-UUID status' to monitor the progress.
+```
+
+Checking the status of the deployment:
+
+```
+./akamai-eaa cert crt://certificate-UUID status
+#App/IdP ID,name,status
+app://appid-1,Multi-origin Active-Active Demo (US-East),Pending
+app://appid-2,Multi-origin Active-Active Demo (US-West),Pending
+idp://idpid-1,Bogus IdP to test EME-365,Pending
 ```
 
 ## Known Limitations

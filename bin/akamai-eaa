@@ -345,6 +345,8 @@ if __name__ == "__main__":
                 c.delete()
             elif config.action == "rotate":
                 c.rotate()
+            elif config.action == "status":
+                c.status()
         elif config.command in ("idp", "i"):
             i = IdentityProviderAPI(config)
             i.list()
