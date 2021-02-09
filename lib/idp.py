@@ -1,5 +1,3 @@
-import json
-
 # cli-eaa
 from common import cli, BaseAPI
 from application import ApplicationAPI

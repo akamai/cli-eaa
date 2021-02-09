@@ -42,6 +42,7 @@ This can be helpful if you plan to consume EAA logs into your favorite SIEM, or 
 - Application
   - Save, restore/update, deploy
   - Batch operation
+  - Attach/detach connectors
 - Directory
   - Create group and group overlay
   - Synchronize with your LDAP or Active Directory
@@ -200,6 +201,13 @@ You can pipe command as well, example to deploy all the application matching "tu
 
 ```
 $ akamai eaa -b search bastion | akamai eaa app - deploy
+```
+
+Attach/detach connectors to a particular application:
+
+```
+$ akamai eaa app app://app-uuid-1 attach con://connector-uuid-1 con://connector-uuid-2
+$ akamai eaa app app://app-uuid-1 detach con://connector-uuid-1 con://connector-uuid-2
 ```
 
 ### Directory operations
