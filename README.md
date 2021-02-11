@@ -13,6 +13,7 @@
   - [Applications](#applications)
   - [Directory operations](#directory-operations)
   - [Connectors](#connectors)
+    - [Swapping connectors](#swapping-connectors)
   - [Certificate management](#certificate-management)
 - [Known Limitations](#known-limitations)
 - [Troubleshooting and Support](#troubleshooting-and-support)
@@ -53,7 +54,9 @@ This can be helpful if you plan to consume EAA logs into your favorite SIEM, or 
   - List configured certificates
   - Rotate certificate with optional deployment of dependent applications and IdP
 - Connectors
-  - List all connectors including the reachability status
+  - List all connectors including the reachability status and health
+  - Show all applications used by a connector and breakdown of active connection
+  - Swap a connector (limited to applications only)
 
 ## Installation
 
@@ -235,6 +238,7 @@ Directory 2Kz2YqmgSpqT_IJq9BLkWg synchronization requested.
 
 Here with the shortcut `c` and the `column` command available in most POSIX environment.
 When piping, the extra information written on *stderr* so they appear seperately.
+Below short command `akamai eaa c` short form for `akamai eaa connector list`:
 
 ```
 $ akamai eaa c | column -t -s,
@@ -249,6 +253,36 @@ con://pkGjL5OgSjyHoymMguvp9Q  demo-v2-con-6-apj   1          1       4.4.0-2765 
 con://NAWSlptPSXOjq-bk2-EQPw  demo-v2-con-10-rus  1          1       4.4.0-2765  10.3.0.101     12.123.123.12   Y
 con://e_0nShZBQ7esNAC3ZEkhSQ  demo-v2-con-3-amer  1          1       4.4.0-2765  10.1.4.83      12.123.123.123  Y
 con://OEe9o-n2S_aMeZpLxgwG0A  tmelab-sfo          1          1       4.4.0-2765  192.168.2.101  12.123.123.12   Y
+```
+
+If you need to integrate connector health into your monitoring system, use the `--perf` option.
+Command `akamai eaa c list --perf`
+You will get 7 extra columns:
+- CPU usage (%)
+- Memory usage (%)
+- Network Traffic (Mbps)
+- Total of dialout connections
+- Idle dialout connections
+- Active dialout connections
+
+#### Swapping connectors
+
+If you are doing a maintenance on an hypervizor, you may need to swap out 2 connectors.
+The current implement look for all the apps, add the new connector, remove the old one.
+The application is marked as ready to update.
+
+Caveats (let us know if you need it):
+- This doesn't perform swap for directory
+- There is no option to automatically redeploy the impacted application after the swap
+
+Example:
+```
+$ akamai eaa connector con://e_0nShZBQ7esNAC3ZEkhSQ swap con://cht3_GEjQWyMW9LEk7KQfg
+#Operation,connector-id,connector-name,app-id,app-name
++,con://cht3_GEjQWyMW9LEk7KQfg,demo-v2-con-1-amer,app://nSFDNGYARHeZGNlweIX7Wg,Speedtest (v2.1)
+-,con://e_0nShZBQ7esNAC3ZEkhSQ,demo-v2-con-3-amer,app://nSFDNGYARHeZGNlweIX7Wg,Speedtest (v2.1)
+Connector swapped in 1 application(s).
+Updated application(s) is/are marked as ready to deploy
 ```
 
 ### Certificate management

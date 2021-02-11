@@ -16,12 +16,16 @@ else
     if type -t deactivate > /dev/null; then
         deactivate
     fi
-    . $dir/venv/bin/activate
+    . $dir/venv3/bin/activate
     interpreter="$dir/bin/akamai-eaa -v"
 fi
 
 echo "cli-eaa interpreter: $interpreter"
 
+function fail() {
+    echo "[FAIL] $1"
+    exit 2
+}
 # Version
 
 $interpreter version
@@ -38,6 +42,9 @@ $interpreter search
 # Directory operations
 
 $interpreter dir list
+
+# Connector operations
+$interpreter c || fail "$interpreter c [rc=$?]"
 
 ##$interpreter dir://abcdef groups 
 ##$interpreter dir://abcdef users androcho
