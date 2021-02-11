@@ -31,22 +31,23 @@ class ConnectorAPI(BaseAPI):
     def __init__(self, config):
         super(ConnectorAPI, self).__init__(config, api=BaseAPI.API_Version.OpenAPI)
 
-    def exists(self, con_moniker):
+    def load(self, con_moniker):
         """
-        Check if a particular connector exist in the account
+        Load a connector config
 
         Args:
-            con_moniker (EAAItem): Identifier of the connector (e.g. con://123456)
+            con_moniker (EAAItem): Connector identifier (e.g. con://123456)
 
         Returns:
-            bool: Existence of the connector
+            bool/dict: False if connector doesn't exist
+                       The full dictionnary configuration of the connector if found
         """
         url_params = {'expand': 'false', 'limit': ConnectorAPI.LIMIT_SOFT}
         data = self.get('mgmt-pop/agents', params=url_params)
         connectors = data.json()
         for c in connectors.get('objects', []):
             if c.get('uuid_url') == con_moniker.uuid:
-                return True
+                return c
         return False
 
     def perf_system(self, connector_id):
@@ -89,7 +90,7 @@ class ConnectorAPI(BaseAPI):
 
     def list(self, perf=False):
         """
-        Display the list of EAA connector with a nice comma separated CSV
+        Display the list of EAA connectors as comma separated CSV
         """
         url_params = {'expand': 'true', 'limit': ConnectorAPI.LIMIT_SOFT}
         data = self.get('mgmt-pop/agents', params=url_params)
@@ -98,8 +99,8 @@ class ConnectorAPI(BaseAPI):
         header = '#Connector-id,name,reachable,status,version,privateip,publicip,debug'
         format_line = "{scheme}{con_id},{name},{reachable},{status},{version},{privateip},{publicip},{debugchan}"
         if perf:
-            header += ",CPU%,Mem%,Disk%"
-            format_line += ",{ts},{cpu},{mem},{disk}"
+            header += ",CPU%,Mem%,Disk%,NetworkMbps,do_total,do_idle,do_active"
+            format_line += ",{ts},{cpu},{mem},{disk},{network},{dialout_total},{dialout_idle},{dialout_active}"
 
         if perf:  # Add performance metrics in the report
             perf_res_list = None
@@ -125,7 +126,11 @@ class ConnectorAPI(BaseAPI):
                 ts=perf_latest.get('timestamp') or ConnectorAPI.NODATA,
                 cpu=perf_latest.get('cpu_pct') or ConnectorAPI.NODATA,
                 disk=perf_latest.get('disk_pct') or ConnectorAPI.NODATA,
-                mem=perf_latest.get('mem_pct') or ConnectorAPI.NODATA
+                mem=perf_latest.get('mem_pct') or ConnectorAPI.NODATA,
+                network=perf_latest.get('network_traffic_mbps') or ConnectorAPI.NODATA,
+                dialout_total=perf_latest.get('dialout_total') or ConnectorAPI.NODATA,
+                dialout_idle=perf_latest.get('dialout_idle') or ConnectorAPI.NODATA,
+                dialout_active=perf_latest.get('dialout_active') or ConnectorAPI.NODATA
             ))
         cli.footer("Total %s connector(s)" % total_con)
 
@@ -135,6 +140,12 @@ class ConnectorAPI(BaseAPI):
 
         Args:
             connector_moniker (EAAItem): Connector ID.
+
+        Returns:
+            Tuple of 3 values:
+                - application moniker
+                - application name
+                - application host (external hostname)
 
         Raises:
             TypeError: If the argument is wrong type.
@@ -151,9 +162,6 @@ class ConnectorAPI(BaseAPI):
                 con_moniker = EAAItem("con://" + con.get('uuid_url'))
                 if con_moniker == connector_moniker:
                     yield app_moniker, app.get('name'), app.get('host')
-
-        #    if a.get('cert') == certid:
-        #        yield (EAAItem("app://%s" % a.get('uuid_url')), a.get('name'))
 
     def list_apps(self, con_moniker, perf=False):
         if not isinstance(con_moniker, EAAItem):
@@ -188,17 +196,41 @@ class ConnectorAPI(BaseAPI):
             new_con_id (EAAItem): New connector to attach on the applications and directories
             dryrun (bool, optional): Enable dry run. Defaults to False.
         """
+        infos_by_conid = {}
         old_con = EAAItem(old_con_id)
         new_con = EAAItem(new_con_id)
-        cli.print("Swapping connector %s with connector %s..." % (old_con_id, new_con_id))
-        if not self.exists(new_con):
-            cli.print_error("EAA connector %s not found." % new_con)
-            cli.print_error("Please check with command 'akamai eaa connector'.")
-            cli.exit(2)
-        # app_api = ApplicationAPI(self._config)
-        for app_using_old_con, app_name in self.findappbyconnector(old_con):
+        for c in [old_con, new_con]:
+            connector_info = self.load(c)
+            if not connector_info:
+                cli.print_error("EAA connector %s not found." % c)
+                cli.print_error("Please check with command 'akamai eaa connector'.")
+                cli.exit(2)
+            # Save the details for better
+            infos_by_conid[c] = connector_info
+        app_api = ApplicationAPI(self._config)
+        app_processed = 0
+        cli.header("#Operation,connector-id,connector-name,app-id,app-name")
+        for app_using_old_con, app_name, app_host in self.findappbyconnector(old_con):
             if dryrun:
-                cli.print("DRYRUN: Adding connector %s in %s (%s)" % (new_con, app_name, app_using_old_con))
-                cli.print("DRYRUN: Removing connector %s in %s (%s)" % (old_con, app_name, app_using_old_con))
+                cli.print("DRYRUN +,%s,%s,%s,%s" % (
+                    new_con, infos_by_conid[new_con].get('name'),
+                    app_using_old_con, app_name))
+                cli.print("DRYRUN -,%s,%s,%s,%s" % (
+                    old_con, infos_by_conid[old_con].get('name'),
+                    app_using_old_con, app_name))
             else:
-                cli.print("To be implemented")
+                app_api.attach_connectors(app_using_old_con, [{'uuid_url': new_con.uuid}])
+                cli.print("+,%s,%s,%s,%s" % (
+                    new_con, infos_by_conid[new_con].get('name'),
+                    app_using_old_con, app_name))
+                app_api.detach_connectors(app_using_old_con, [{'uuid_url': old_con.uuid}])
+                cli.print("-,%s,%s,%s,%s" % (
+                    old_con, infos_by_conid[old_con].get('name'),
+                    app_using_old_con, app_name))
+            app_processed += 1
+        if app_processed == 0:
+            cli.footer("Connector %s is not used by any application." % old_con_id)
+            cli.footer("Check with command 'akamai eaa connector %s apps'" % old_con_id)
+        else:
+            cli.footer("Connector swapped in %s application(s)." % app_processed)
+            cli.footer("Updated application(s) is/are marked as ready to deploy")
