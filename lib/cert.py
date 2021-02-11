@@ -145,6 +145,7 @@ class CertificateAPI(BaseAPI):
             idp_api.deploy(idp_id)
         cli.print("Deployment(s) in progress, it typically take 3 to 5 minutes")
         cli.print("Use 'akamai eaa cert crt://%s status' to monitor the progress." % certid)
+
     def delete(self):
         raise NotImplementedError("deletion not implemented")
         pass
