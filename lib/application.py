@@ -29,6 +29,9 @@ class ApplicationAPI(BaseAPI):
     Only supported with {OPEN} API
     """
 
+    LIMIT_INFINITE = 0  # Unless you know what you're doing
+    LIMIT_SOFT = 10000  # Most tenant should accomodate this limit
+
     class Status(Enum):
         NotReady = 1
         Ready = 2
@@ -428,6 +431,9 @@ class ApplicationAPI(BaseAPI):
     def attach_connectors(self, app_moniker, connectors):
         """
         Attach connector/s to an application.
+
+        :param EAAItem app_moniker: Application Moniker (prefix + UUID)
+        :param list connectors: Connector list, expected list item format is dict {'uuid_url': '<UUID>'}
         """
         # POST on mgmt-pop/apps/DBMcU6FwSjKa7c9sny4RLg/agents
         # Body

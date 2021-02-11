@@ -23,7 +23,6 @@ Command Line Input tool for Akamai Enterprise Application Access
 
 from __future__ import print_function
 import sys
-import json
 import requests
 import time
 import platform
@@ -35,13 +34,12 @@ import re
 
 # cli-eaa
 import _paths
-from common import cli, config, BaseAPI, EAAItem
+from common import cli, config, BaseAPI, EAAItem, __version__
 from eventlog import EventLogAPI
 from cert import CertificateAPI
 from application import ApplicationAPI
 from idp import IdentityProviderAPI
-
-__version__ = '0.3.0'
+from connector import ConnectorAPI
 
 verbose = getattr(config, 'verbose', False)
 
@@ -269,37 +267,6 @@ class ReportingAPI(BaseAPI):
         cli.footer("%s unique EAA Clients checked-in in the last 30 days" % count)
 
 
-class ConnectorAPI(BaseAPI):
-
-    def __init__(self, config):
-        super(ConnectorAPI, self).__init__(config, api=BaseAPI.API_Version.OpenAPI)
-
-    def list(self):
-        url_params = {'expand': 'true', 'limit': 0}
-        data = self.get('mgmt-pop/agents', params=url_params)
-        connectors = data.json()
-        total_con = 0
-        logging.info(json.dumps(data.json(), indent=4))
-        cli.print('#Connector-id,name,reachable,status,version,privateip,publicip,debug')
-        format_line = "{scheme}{con_id},{name},{reachable},{status},{version},{privateip},{publicip},{debugchan}"
-        for total_con, c in enumerate(connectors.get('objects', {}), start=1):
-
-            cli.print(format_line.format(
-                scheme=EAAItem.Type.Connector.scheme,
-                con_id=c.get('uuid_url'),
-                name=c.get('name'),
-                reachable=c.get('reach'),
-                status=c.get('status'),
-                version=c.get('agent_version').replace('AGENT-', '').strip(),
-                privateip=c.get('private_ip'),
-                publicip=c.get('public_ip'),
-                debugchan='Y' if c.get('debug_channel_permitted') else 'N'
-            ))
-        cli.footer("Total %s connector(s)" % total_con)
-
-
-
-
 if __name__ == "__main__":
 
     logging.basicConfig(filename=log_file, level=cli.log_level(), format=LOG_FMT)
@@ -336,10 +303,13 @@ if __name__ == "__main__":
             a.process_command()
         elif config.command in ("connector", "c"):
             c = ConnectorAPI(config)
-            c.list()
+            if config.action == "swap":
+                c.swap(config.connector_id, config.new_connector_id, config.dryrun)
+            else:
+                c.list(perf=config.perf)
         elif config.command in ("certificate", "cert"):
             c = CertificateAPI(config)
-            if config.action == "list" or config.certificate_id is None:
+            if config.action is None or config.action == "list" or config.certificate_id is None:
                 c.list()
             elif config.action == "delete":
                 c.delete()

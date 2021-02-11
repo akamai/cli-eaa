@@ -34,6 +34,8 @@ from akamai.edgegrid import EdgeGridAuth, EdgeRc
 # use the config
 config = EdgeGridConfig({'verbose': False}, 'default')
 
+__version__ = '0.3.0'
+
 
 class cli:
     """
@@ -150,6 +152,12 @@ class EAAItem(object):
     def __str__(self):
         return self.__repr__()
 
+    def __eq__(self, other):
+        return self.__str__() == other.__str__()
+
+    def __neq__(self, other):
+        return self.__str__() != other.__str__()
+
 
 class BaseAPI(object):
 
@@ -183,9 +191,11 @@ class BaseAPI(object):
             self._session = requests.Session()
             self._session.auth = EdgeGridAuth.from_edgerc(edgerc, section)
 
-        if self._session and config.proxy:
-            logging.info("Set proxy to %s" % config.proxy)
-            self._session.proxies['https'] = 'http://%s' % config.proxy
+        if self._session:
+            self._session.headers.update({'User-Agent': "cli-eaa/%s" % __version__})
+            if config.proxy:
+                logging.info("Set proxy to %s" % config.proxy)
+                self._session.proxies['https'] = 'http://%s' % config.proxy
 
         logging.info("Initialized with base_url %s" % self._baseurl)
 

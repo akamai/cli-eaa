@@ -118,7 +118,18 @@ class EdgeGridConfig():
         report_parser = subparsers.add_parser('report', aliases=["r"], help='EAA reports')
         report_parser.add_argument(dest='report_name', choices=['clients'], help="Report name")
 
-        subparsers.add_parser('connector', aliases=["c"], help='Manage EAA connectors')
+        con_parser = subparsers.add_parser('connector', aliases=["c", "con"], help='Manage EAA connectors')
+        con_parser.add_argument(dest='connector_id', nargs="?", default=None,
+                                help="Connector ID (e.g. con://abcdefghi)")
+        subsub = con_parser.add_subparsers(dest="action", help="Connector operation")
+        list_parser = subsub.add_parser("apps", help="List applications used by the connector")
+        list_parser = subsub.add_parser("list", help="List all connectors")
+        list_parser.add_argument('--perf', default=False, action="store_true", help='Show performance metrics')
+        # subparsers.required = False
+        swap_parser = subsub.add_parser("swap", help="Swap connector with another one")
+        swap_parser.add_argument(dest="new_connector_id", help='New connector ID')
+        swap_parser.add_argument('--dryrun', dest="dryrun", action="store_true", default=False, help='Dry run mode')
+
         subparsers.add_parser('idp', aliases=["i"], help='Manage EAA Identity Providers')
 
         subparsers.add_parser('version', help='Display cli-eaa module version')
