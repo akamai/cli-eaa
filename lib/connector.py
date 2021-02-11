@@ -49,7 +49,7 @@ class ConnectorAPI(BaseAPI):
                 return True
         return False
 
-    def perf(self, connector_id):
+    def perf_system(self, connector_id):
         """
         Fetch connector performance latest performance data (system and app)
 
@@ -70,6 +70,23 @@ class ConnectorAPI(BaseAPI):
             perf_latest = perf_data.get('data', [])[-1]
         return (connector_id, perf_latest)
 
+    def perf_apps(self, connector_id):
+        """
+        Fetch app usage for a connector
+
+        Args:
+            connector_id ([type]): [description]
+        """
+        perfapp_api_url = 'mgmt-pop/agents/{agentid}/apps_resource/metrics'.format(agentid=connector_id)
+        perf_data_resp = self.get(perfapp_api_url, params={'period': '1h', 'filter_all': 'false'})
+        perf_by_host = {}
+        if perf_data_resp.status_code == 200:
+            for perf_by_app in perf_data_resp.json().get('data', []):
+                perf_by_host[perf_by_app.get('app_name')] = {}
+                if len(perf_by_app.get('histogram_data', [])[-1]) >= 1:
+                    perf_by_host[perf_by_app.get('app_name')] = perf_by_app.get('histogram_data')[-1]
+        return perf_by_host
+
     def list(self, perf=False):
         """
         Display the list of EAA connector with a nice comma separated CSV
@@ -87,7 +104,7 @@ class ConnectorAPI(BaseAPI):
         if perf:  # Add performance metrics in the report
             perf_res_list = None
             with Pool(ConnectorAPI.POOL_SIZE) as p:
-                perf_res_list = p.map(self.perf, [c.get('uuid_url') for c in connectors.get('objects', [])])
+                perf_res_list = p.map(self.perf_system, [c.get('uuid_url') for c in connectors.get('objects', [])])
             perf_res = dict(perf_res_list)
 
         cli.header(header)
@@ -127,16 +144,38 @@ class ConnectorAPI(BaseAPI):
         url_params = {'limit': ApplicationAPI.LIMIT_SOFT, 'expand': 'true'}
         search_app = self.get('mgmt-pop/apps', params=url_params)
         apps = search_app.json()
-        cli.print("Searching app using %s..." % connector_moniker)
+        logging.debug("Searching app using %s..." % connector_moniker)
         for app in apps.get('objects', []):
             for con in app.get('agents', []):
                 app_moniker = EAAItem("app://" + app.get('uuid_url'))
                 con_moniker = EAAItem("con://" + con.get('uuid_url'))
                 if con_moniker == connector_moniker:
-                    yield app_moniker
+                    yield app_moniker, app.get('name'), app.get('host')
 
         #    if a.get('cert') == certid:
         #        yield (EAAItem("app://%s" % a.get('uuid_url')), a.get('name'))
+
+    def list_apps(self, con_moniker, perf=False):
+        if not isinstance(con_moniker, EAAItem):
+            raise TypeError("con_moniker")
+        if perf:
+            perf_by_apphost = self.perf_apps(con_moniker.uuid)
+            line_fmt = "{app_id},{app_name},{perf_upd},{active}"
+            cli.header("#app_id,app_name,perf_upd,active")
+        else:
+            line_fmt = "{app_id},{app_name}"
+            cli.header("#app_id,app_name")
+        for c, (app_id, app_name, app_host) in enumerate(self.findappbyconnector(con_moniker), start=1):
+            perf_data = {}
+            if perf:
+                perf_data = perf_by_apphost.get(app_host, {})
+            cli.print(line_fmt.format(
+                app_id=app_id,
+                app_name=app_name,
+                perf_upd=perf_data.get('timestamp', ConnectorAPI.NODATA),
+                active=perf_data.get('active', ConnectorAPI.NODATA)
+            ))
+        cli.footer("%s application(s) attached to connector %s" % (c, con_moniker.uuid))
 
     def swap(self, old_con_id, new_con_id, dryrun=False):
         """
@@ -157,9 +196,9 @@ class ConnectorAPI(BaseAPI):
             cli.print_error("Please check with command 'akamai eaa connector'.")
             cli.exit(2)
         # app_api = ApplicationAPI(self._config)
-        for app_using_old_con in self.findappbyconnector(old_con):
+        for app_using_old_con, app_name in self.findappbyconnector(old_con):
             if dryrun:
-                cli.print("DRYRUN: Adding %s in %s" % (new_con, app_using_old_con))
-                cli.print("DRYRUN: Removing %s in %s" % (old_con, app_using_old_con))
+                cli.print("DRYRUN: Adding connector %s in %s (%s)" % (new_con, app_name, app_using_old_con))
+                cli.print("DRYRUN: Removing connector %s in %s (%s)" % (old_con, app_name, app_using_old_con))
             else:
                 cli.print("To be implemented")

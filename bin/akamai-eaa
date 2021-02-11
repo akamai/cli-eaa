@@ -305,6 +305,9 @@ if __name__ == "__main__":
             c = ConnectorAPI(config)
             if config.action == "swap":
                 c.swap(config.connector_id, config.new_connector_id, config.dryrun)
+            elif config.action == "apps":
+                con_moniker = EAAItem(config.connector_id)
+                c.list_apps(con_moniker, perf=config.perf)
             else:
                 c.list(perf=config.perf)
         elif config.command in ("certificate", "cert"):

@@ -122,7 +122,9 @@ class EdgeGridConfig():
         con_parser.add_argument(dest='connector_id', nargs="?", default=None,
                                 help="Connector ID (e.g. con://abcdefghi)")
         subsub = con_parser.add_subparsers(dest="action", help="Connector operation")
-        list_parser = subsub.add_parser("apps", help="List applications used by the connector")
+        app_parser = subsub.add_parser("apps", help="List applications used by the connector")
+        app_parser.add_argument('--perf', default=False, action="store_true", help='Show performance metrics')
+
         list_parser = subsub.add_parser("list", help="List all connectors")
         list_parser.add_argument('--perf', default=False, action="store_true", help='Show performance metrics')
         # subparsers.required = False
