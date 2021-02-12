@@ -17,4 +17,7 @@
 Custom path for cli-eaa, without breaking E402
 """
 import sys
-sys.path.append("../lib")
+import pathlib
+import os.path
+
+sys.path.append(os.path.join(pathlib.Path(__file__).parent.parent.absolute(), "lib"))
