@@ -119,7 +119,7 @@ class ConnectorAPI(BaseAPI):
                 name=c.get('name'),
                 reachable=c.get('reach'),
                 status=c.get('status'),
-                version=c.get('agent_version').replace('AGENT-', '').strip(),
+                version=(c.get('agent_version') or '').replace('AGENT-', '').strip(),
                 privateip=c.get('private_ip'),
                 publicip=c.get('public_ip'),
                 debugchan='Y' if c.get('debug_channel_permitted') else 'N',

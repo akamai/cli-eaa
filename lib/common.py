@@ -21,7 +21,7 @@ import logging
 import base64
 import hmac
 import hashlib
-from urllib.parse import urljoin
+from urllib.parse import urljoin, parse_qs
 from enum import Enum
 
 # 3rd party libs
@@ -34,7 +34,7 @@ from akamai.edgegrid import EdgeGridAuth, EdgeRc
 # use the config
 config = EdgeGridConfig({'verbose': False}, 'default')
 
-__version__ = '0.3.0'
+__version__ = '0.3.1'
 
 
 class cli:
@@ -174,6 +174,7 @@ class BaseAPI(object):
         self._config = config
         edgerc = EdgeRc(config.edgerc)
         section = config.section
+        self.extra_qs = {}
 
         if api == self.API_Version.Legacy:  # Prior to {OPEN} API
             self._api_ver = api
@@ -188,11 +189,15 @@ class BaseAPI(object):
                 edgerc.get(section, 'eaa_api_key'),
                 edgerc.get(section, 'eaa_api_secret')
             )
-        else:  # {OPEN} API
+        else:  # EAA {OPEN} API
             # TODO handle ambiguity when multiple contract ID are in use
             self._baseurl = 'https://%s/crux/v1/' % edgerc.get(section, 'host')
             self._session = requests.Session()
             self._session.auth = EdgeGridAuth.from_edgerc(edgerc, section)
+            # Handle extra querystring to send to all REST requests
+            scanned_extra_qs = edgerc.get(section, 'extra_qs', fallback=None)
+            if scanned_extra_qs:
+                self.extra_qs.update(parse_qs(scanned_extra_qs))
 
         if self._session:
             self._session.headers.update({'User-Agent': "cli-eaa/%s" % __version__})
@@ -204,6 +209,7 @@ class BaseAPI(object):
 
     def build_params(self, params=None):
         final_params = {}
+        final_params.update(self.extra_qs)
         if hasattr(self._config, 'contract_id') and self._config.contract_id:
             final_params.update({'contractId': self._config.contract_id})
         if isinstance(params, dict):

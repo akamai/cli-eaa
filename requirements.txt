@@ -1,5 +1,4 @@
 requests
 six
 edgegrid-python
-colorama
 jinja2

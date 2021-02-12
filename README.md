@@ -80,7 +80,7 @@ To check your cli-eaa version with the `version` command
 
 ```
 $ akamai eaa version
-0.3.0
+0.3.1
 ```
 
 ### Configuration file
