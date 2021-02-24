@@ -114,7 +114,11 @@ client_secret = xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 access_token = akab-xxxxxxxxxxxxxxxx-xxxxxxxxxxxxxxxx
 ; If your organization have multiple contracts with EAA service
 ; please add it below. Contact your Akamai representative to obtain it
-contractid = A-B-1CD2E34
+contract_id = A-B-1CD2E34
+; If you are a partner managing multiple customers, you can use the switchkey
+; For more information, see:
+; https://learn.akamai.com/en-us/learn_akamai/getting_started_with_akamai_developers/developer_tools/accountSwitch.html
+extra_qs = accountSwitchKey=TENANT-SWITCH-KEY
 ```
 
 ### Upgrade cli-eaa
@@ -201,7 +205,7 @@ View groups associated with a particular application
 $ akamai eaa app app://FWbUCfpvRKaSOX1rl0u55Q viewgroups
 ```
 
-You can pipe command as well, example to deploy all the application matching "tunnel"
+You can pipe command as well, example to deploy all the application matching "bastion"
 
 ```
 $ akamai eaa -b search bastion | akamai eaa app - deploy
