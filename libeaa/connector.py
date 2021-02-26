@@ -99,7 +99,7 @@ class ConnectorAPI(BaseAPI):
         header = '#Connector-id,name,reachable,status,version,privateip,publicip,debug'
         format_line = "{scheme}{con_id},{name},{reachable},{status},{version},{privateip},{publicip},{debugchan}"
         if perf:
-            header += ",CPU%,Mem%,Disk%,NetworkMbps,do_total,do_idle,do_active"
+            header += ",last_upd,CPU%,Mem%,Disk%,NetworkMbps,do_total,do_idle,do_active"
             format_line += ",{ts},{cpu},{mem},{disk},{network},{dialout_total},{dialout_idle},{dialout_active}"
 
         if perf:  # Add performance metrics in the report
@@ -119,9 +119,9 @@ class ConnectorAPI(BaseAPI):
                 name=c.get('name'),
                 reachable=c.get('reach'),
                 status=c.get('status'),
-                version=(c.get('agent_version') or '').replace('AGENT-', '').strip(),
-                privateip=c.get('private_ip'),
-                publicip=c.get('public_ip'),
+                version=((c.get('agent_version') or ConnectorAPI.NODATA)).replace('AGENT-', '').strip(),
+                privateip=c.get('private_ip') or ConnectorAPI.NODATA,
+                publicip=c.get('public_ip') or ConnectorAPI.NODATA,
                 debugchan='Y' if c.get('debug_channel_permitted') else 'N',
                 ts=perf_latest.get('timestamp') or ConnectorAPI.NODATA,
                 cpu=perf_latest.get('cpu_pct') or ConnectorAPI.NODATA,

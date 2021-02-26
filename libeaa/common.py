@@ -54,7 +54,7 @@ class cli:
 
     @staticmethod
     def header(s):
-        sys.stderr.write("%s\n" % s)
+        sys.stdout.write("%s\n" % s)
 
     @staticmethod
     def footer(s):

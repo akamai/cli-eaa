@@ -157,8 +157,9 @@ class EventLogAPI(common.BaseAPI):
 
     def fetch_logs(self, exit_fn, stop_event):
         """
-        Fetch all logs
-        :param exit_fn: function to call upon SIGTERM and SIGINT
+        Fetch all logs until stop_event is set
+        :param exit_fn:     function to call upon SIGTERM and SIGINT
+        :param stop_event:  thread event, the fetch will operate in a loop until the event is set
         """
         log_type = self.EventType(config.log_type)
         logging.info(log_type)

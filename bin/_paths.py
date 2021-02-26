@@ -20,4 +20,4 @@ import sys
 import pathlib
 import os.path
 
-sys.path.append(os.path.join(pathlib.Path(__file__).parent.parent.absolute(), "lib"))
+sys.path.append(os.path.join(pathlib.Path(__file__).parent.parent.absolute(), "libeaa"))
