@@ -109,7 +109,7 @@ class EventLogAPI(common.BaseAPI):
                                 continue
                             logging.debug("flog is %s" % type(response['flog']).__name__)
                             logging.debug("Scanned timestamp: %s" % timestamp)
-                            local_time = datetime.date.fromtimestamp(int(timestamp)/1000)
+                            local_time = datetime.datetime.fromtimestamp(int(timestamp)/1000)
                             if isinstance(response, dict) and 'flog' in response:
                                 line = "%s\n" % ' '.join([local_time.isoformat(), response['flog']])
                                 output.write(line)
@@ -121,7 +121,7 @@ class EventLogAPI(common.BaseAPI):
                 elif logtype == self.EventType.ADMIN:
                     for item in msg.get('data'):
                         try:
-                            local_time = datetime.date.fromtimestamp(int(item.get('ts')/1000))
+                            local_time = datetime.datetime.fromtimestamp(int(item.get('ts')/1000))
                             line = u"{},{}\n".format(local_time.isoformat(), item.get('splunk_line'))
                             output.write(line)
                             self.line_count += 1
