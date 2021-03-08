@@ -127,11 +127,13 @@ class DirectoryAPI(BaseAPI):
             url_params = url_params.update({'q': self._config.search_pattern})
         resp = self.get(url, params=url_params)
         resj = resp.json()
+        cli.header("#GroupID,name,last_sync")
         for u in resj.get('objects'):
-            print('{scheme}{uuid},{name}'.format(
+            print('{scheme}{uuid},{name},{last_sync_time}'.format(
                 scheme=EAAItem.Type.Group.scheme,
                 uuid=u.get('uuid_url'),
-                name=u.get('name')
+                name=u.get('name'),
+                last_sync_time=u.get('last_sync_time')
             ))
 
     def list_users(self, search=None):
