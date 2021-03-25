@@ -109,6 +109,10 @@ class EventLogAPI(common.BaseAPI):
                                 continue
                             logging.debug("flog is %s" % type(response['flog']).__name__)
                             logging.debug("Scanned timestamp: %s" % timestamp)
+                            if int(timestamp) < int(drpc_args.get('sts')):
+                                raise Exception("Out of bound error: incoming event time %s vs. start set to %s" % (timestamp, drpc_args.get('sts')))
+                            if int(timestamp) >= int(drpc_args.get('ets')):
+                                raise Exception("Out of bound error: incoming event time %s vs. end set to %s" % (timestamp, drpc_args.get('ets')))
                             local_time = datetime.datetime.fromtimestamp(int(timestamp)/1000)
                             if isinstance(response, dict) and 'flog' in response:
                                 line = "%s\n" % ' '.join([local_time.isoformat(), response['flog']])
@@ -177,8 +181,10 @@ class EventLogAPI(common.BaseAPI):
                 out = self._output
                 if hasattr(out, 'reconfigure'):
                     out.reconfigure(encoding='utf-8')
-
-            start_position = out.tell()
+            if out.seekable():
+                start_position = out.tell()
+            else:
+                start_position = 0
 
             while True:
                 ets, sts = EventLogAPI.date_boundaries()
