@@ -181,6 +181,9 @@ class DirectoryAPI(BaseAPI):
                 if sync_resp.status_code != 200:
                     cli.print_error("Fail to synchronize group (API response code %s)" % sync_resp.status_code)
                     cli.exit(3)
+                else:
+                    cli.print("Synchronization of group %s (%s) successfully requested." %
+                              (group_info.get('name'), group))
             else:
                 cli.print_error("Can't sync due to last recent sync too recent, %s seconds interval is required" %
                                 self._config.mininterval)
