@@ -73,7 +73,16 @@ class EdgeGridConfig():
         addovlgrp_parser.add_argument('group', help="Group Name")
 
         subsub.add_parser("sync", help="Synchronize directory")
-
+        syncgrp_parser = subsub.add_parser("syncgroup", help="Synchronize group")
+        syncgrp_parser.add_argument('group_uuid', help="Group UUID e.g. group://abcedf")
+        # mininterval | Undocumented argument
+        # Group synchronization will be ignored if the last request
+        # was performed before this amount of time in second. Use 0
+        # to force the synchronization. Default is 1800 seconds (30 minutes)
+        syncgrp_parser.add_argument('--mininterval', '-i', type=int, default=1800, help=argparse.SUPPRESS)
+        # retry | Undocumented argument
+        # Number of retry allowed if the sync command fails. Default: 0
+        syncgrp_parser.add_argument("--retry", "-r", type=int, default=0, help=argparse.SUPPRESS)
         # New: akamai eaa app xyz add_dnsexception www.abcd.efg
         #      akamai eaa app xyz del_dnsexception www.abcd.efg
         app_parser = subparsers.add_parser('app', aliases=["a"], help='Manage EAA applications')
@@ -108,7 +117,7 @@ class EdgeGridConfig():
         subsub.add_parser("delete", help="Delete existing certificate")
         subsub.add_parser("status", help="Display status of application/idp using the certificate")
         certadd_parser = subsub.add_parser("rotate", help="Rotate existing certificate with a new one")
-        certadd_parser.add_argument('--cert', '-c', required=True, type=argparse.FileType('r'), 
+        certadd_parser.add_argument('--cert', '-c', required=True, type=argparse.FileType('r'),
                                     help="Certificate in PEM format")
         certadd_parser.add_argument('--key', '-k', required=True, type=argparse.FileType('r'), help="Private Key")
         certadd_parser.add_argument('--passphrase', '--pass', '-p', help="Certificate passphrase")

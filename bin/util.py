@@ -3,6 +3,7 @@ import six
 from io import open
 
 
+# TODO: deprecated since cli-eaa requires python 3
 def force_unicode(s):
     if six.PY2:
         return unicode(s)
