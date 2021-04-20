@@ -34,7 +34,7 @@ from akamai.edgegrid import EdgeGridAuth, EdgeRc
 # use the config
 config = EdgeGridConfig({'verbose': False}, 'default')
 
-__version__ = '0.3.2'
+__version__ = '0.3.3'
 
 
 class cli:

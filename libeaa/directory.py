@@ -4,6 +4,7 @@ import logging
 import re
 import requests
 import datetime
+import time
 
 # cli-eaa modules
 import util
@@ -159,36 +160,45 @@ class DirectoryAPI(BaseAPI):
         Payload: {}
         Response: {"response": "Syncing Group Sales Department"}
         """
-        cli.print("Synchronizing %s..." % group_uuid)
         group = EAAItem(group_uuid)
-        resp = self.get('mgmt-pop/directories/{dir_uuid}/groups/{group_uuid}'.format(
-            dir_uuid=self._directory_id,
-            group_uuid=group.uuid))
-        if resp.status_code != 200:
-            logging.error("Error retrieve group info (%s)" % resp.status_code)
-            cli.exit(2)
-        group_info = resp.json()
-        if group_info.get('last_sync_time'):
-            last_sync = datetime.datetime.fromisoformat(group_info.get('last_sync_time'))
-            delta = datetime.datetime.utcnow() - last_sync
-            cli.print("Last sync of group %s was @ %s UTC (%d seconds ago)" % (
-                group_info.get('name'),
-                last_sync,
-                delta.total_seconds())
-            )
-            if delta.total_seconds() > self._config.mininterval:
-                sync_resp = self.post('mgmt-pop/groups/{group_uuid}/sync'.format(group_uuid=group.uuid))
-                if sync_resp.status_code != 200:
-                    cli.print_error("Fail to synchronize group (API response code %s)" % sync_resp.status_code)
-                    cli.exit(3)
-                else:
-                    cli.print("Synchronization of group %s (%s) successfully requested." %
-                              (group_info.get('name'), group))
-            else:
-                cli.print_error("Can't sync due to last recent sync too recent, %s seconds interval is required" %
-                                self._config.mininterval)
+        retry_remaining = self._config.retry + 1
+        while retry_remaining > 0:
+            retry_remaining -= 1
+            cli.print("Synchronizing %s [retry=%s]..." % (group_uuid, retry_remaining))
+            resp = self.get('mgmt-pop/directories/{dir_uuid}/groups/{group_uuid}'.format(
+                dir_uuid=self._directory_id,
+                group_uuid=group.uuid))
+            if resp.status_code != 200:
+                logging.error("Error retrieve group info (%s)" % resp.status_code)
                 cli.exit(2)
-                # TODO retry etc...
+            group_info = resp.json()
+            if group_info.get('last_sync_time'):
+                last_sync = datetime.datetime.fromisoformat(group_info.get('last_sync_time'))
+                delta = datetime.datetime.utcnow() - last_sync
+                cli.print("Last sync of group %s was @ %s UTC (%d seconds ago)" % (
+                    group_info.get('name'),
+                    last_sync,
+                    delta.total_seconds())
+                )
+                if delta.total_seconds() > self._config.mininterval:
+                    sync_resp = self.post('mgmt-pop/groups/{group_uuid}/sync'.format(group_uuid=group.uuid))
+                    if sync_resp.status_code != 200:
+                        cli.print_error("Fail to synchronize group (API response code %s)" % sync_resp.status_code)
+                        cli.exit(3)
+                    else:
+                        cli.print("Synchronization of group %s (%s) successfully requested." %
+                                  (group_info.get('name'), group))
+                        break
+                else:
+                    cli.print_error("Last group sync is too recent, sync aborted. %s seconds interval is required." %
+                                    self._config.mininterval)
+                    if retry_remaining == 0:
+                        cli.exit(2)
+                    else:
+                        sleep_time = last_sync + datetime.timedelta(seconds=self._config.mininterval) - \
+                                     datetime.datetime.utcnow()
+                        cli.print("Sleeping for %s, press Control-Break to interrupt" % sleep_time)
+                        time.sleep(sleep_time.total_seconds())
 
     def synchronize(self):
         print("Synchronize whole directory %s..." % self._directory_id)
