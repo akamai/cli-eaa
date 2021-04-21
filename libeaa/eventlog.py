@@ -190,6 +190,10 @@ class EventLogAPI(common.BaseAPI):
                 ets, sts = EventLogAPI.date_boundaries()
                 s = time.time()
                 logging.info("Fetching log[%s] from %s to %s..." % (log_type, sts, ets))
+                if log_type == log_type.ADMIN:
+                    if not config.batch:
+                        cli.print("#DatetimeUTC,AdminID,ResourceType,Resource,Event,EventType")
+                out.write
                 scroll_id = None
                 while (True):
                     drpc_args = {
