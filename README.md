@@ -5,9 +5,7 @@
 - [Screenshot](#screenshot)
 - [Introduction](#introduction)
 - [Key features](#key-features)
-- [Installation](#installation)
-  - [Configuration file](#configuration-file)
-  - [Upgrade cli-eaa](#upgrade-cli-eaa)
+- [Installation / upgrade](#installation--upgrade)
 - [Examples](#examples)
   - [EAA event logs](#eaa-event-logs)
   - [Applications](#applications)
@@ -58,76 +56,9 @@ This can be helpful if you plan to consume EAA logs into your favorite SIEM, or 
   - Show all applications used by a connector and breakdown of active connection
   - Swap a connector (limited to applications only)
 
-## Installation
+## Installation / upgrade
 
-Make sure your first have Akamai CLI installed on your machine.
-
-We support a wide variety of platform: Windows, Mac, Linux, container...
-
-For more information, please visit the [Getting Started](https://developer.akamai.com/cli/docs/getting-started) guide on developer.akamai.com.
-
-Once the Akamai CLI is installed, the `cli-eaa` module installation is done via `akamai install eaa` command:
-
-```
-$ akamai install eaa
-```
-
-And voilà!
-
-The command takes care of all the dependencies. 
-
-To check your cli-eaa version with the `version` command
-
-```
-$ akamai eaa version
-0.3.2
-```
-
-### Configuration file
-
-In order to work, the CLI module will look for an `.edgerc` configuration file stored 
-in your home directory or your prefered location. \
-For the latter make sure to use the `--edgerc` parameter in the command line.\
-
-To create a {OPEN} API user, follow [these instructions](https://developer.akamai.com/legacy/introduction/Prov_Creds.html).
-Make sure the API user has READ-WRITE permission to *Enterprise Application Access*.
-
-To create a legacy API key and secret from, connect to Akamai Control Center. 
-- use Enterprise Application Access in the left menu
-- go to **System** > **Settings** and 
-- then click **Generate new API Key** in the **API** section of the page
-
-The `.edgerc` file should look like:
-
-```INI
-[default]
-
-; EAA Legacy API used by the 'akamai eaa log' command
-eaa_api_host = manage.akamai-access.com
-eaa_api_key = XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXXX
-eaa_api_secret = XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXXX
-
-; {OPEN} API for everything else
-host = akaa-xxxxxxxxxxxxxxxx-xxxxxxxxxxxxxxxx.luna.akamaiapis.net
-client_token = akab-xxxxxxxxxxxxxxxx-xxxxxxxxxxxxxxxx
-client_secret = xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-access_token = akab-xxxxxxxxxxxxxxxx-xxxxxxxxxxxxxxxx
-; If your organization have multiple contracts with EAA service
-; please add it below. Contact your Akamai representative to obtain it
-contract_id = A-B-1CD2E34
-; If you are a partner managing multiple customers, you can use the switchkey
-; For more information, see:
-; https://learn.akamai.com/en-us/learn_akamai/getting_started_with_akamai_developers/developer_tools/accountSwitch.html
-extra_qs = accountSwitchKey=TENANT-SWITCH-KEY
-```
-
-### Upgrade cli-eaa
-
-To upgrade your CLI EAA module to the latest version, use:
-
-```bash
-$ akamai update eaa
-```
+See [install.md](docs/install.md)
 
 ## Examples
 
