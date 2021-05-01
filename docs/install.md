@@ -23,7 +23,7 @@ If you don't have Python on your system, go to [https://www.python.org](https://
 Make sure your first have Akamai CLI installed on your machine.
 
 We support a wide variety of platform: Windows, Mac, Linux, container...
-Download the CLI from [https://developer.akamai.com/cli](https://developer.akamai.com/cli)
+Download the CLI from [https://developer.akamai.com/cli](https://developer.akamai.com/cli#download-and-install)
 
 For more information, please visit the [Getting Started](https://developer.akamai.com/cli/docs/getting-started) guide on developer.akamai.com.
 
