@@ -48,8 +48,7 @@ $ akamai eaa version
 
 ## Configuration
 
-In order to work, the CLI module will look for an `.edgerc` configuration file stored 
-in your home directory or your prefered location. \
+In order to work, the CLI module will look for an `.edgerc` configuration file stored  in your home directory or your prefered location. \
 For the latter make sure to use the `--edgerc` parameter in the command line.\
 
 To create a {OPEN} API user, follow [these instructions](https://developer.akamai.com/legacy/introduction/Prov_Creds.html).
@@ -65,12 +64,7 @@ The `.edgerc` file should look like:
 ```INI
 [default]
 
-; EAA Legacy API used by the 'akamai eaa log' command
-eaa_api_host = manage.akamai-access.com
-eaa_api_key = XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXXX
-eaa_api_secret = XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXXX
-
-; {OPEN} API for everything else
+; Akamai {OPEN} API credentials
 host = akaa-xxxxxxxxxxxxxxxx-xxxxxxxxxxxxxxxx.luna.akamaiapis.net
 client_token = akab-xxxxxxxxxxxxxxxx-xxxxxxxxxxxxxxxx
 client_secret = xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
@@ -82,7 +76,15 @@ contract_id = A-B-1CD2E34
 ; For more information, see:
 ; https://learn.akamai.com/en-us/learn_akamai/getting_started_with_akamai_developers/developer_tools/accountSwitch.html
 extra_qs = accountSwitchKey=TENANT-SWITCH-KEY
+
+; [OPTIONAL] EAA Legacy API used by the 'akamai eaa log' command
+eaa_api_host = manage.akamai-access.com
+eaa_api_key = XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXXX
+eaa_api_secret = XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXXX
+
 ```
+
+If you are managing multiple tenants (partner, reseller), you may create multiple section like `[mytenant123]` and use the `-c` or `--section` argument of the command line.
 
 ## Upgrade cli-eaa
 
