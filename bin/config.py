@@ -101,7 +101,9 @@ class EdgeGridConfig():
         detcon_parser.add_argument(dest="connector_id", nargs="+",
                                    help='Detach one or multiple connectors to the application, e.g. con://123456.')
 
-        subsub.add_parser("deploy", help="Deploy the application")
+        deploy_parser = subsub.add_parser("deploy", help="Deploy the application")
+        deploy_parser.add_argument("--comment", "-c", nargs="?", default="Deploy from cli-eaa", 
+                                   help="Comment for the deployment")
         subsub.add_parser("update", help="Update an existing application")
         subsub.add_parser("create", help="Create a new application")
         subsub.add_parser("delete", help="Delete an application")

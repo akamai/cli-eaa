@@ -99,7 +99,7 @@ class ApplicationAPI(BaseAPI):
 
         if config.action == "deploy":
             for a in applications:
-                self.deploy(a)
+                self.deploy(a, config.comment)
                 cli.print("Application %s deployment requested, it may take a few minutes before it gets live." % a)
         elif config.action == "create":
             # new_config = json.load(sys.stdin)
@@ -483,7 +483,7 @@ class ApplicationAPI(BaseAPI):
         logging.info("Remove DNS exception: %s" % config.exception_fqdn)
         pass
 
-    def deploy(self, app_moniker):
+    def deploy(self, app_moniker, comment=""):
         """
         Deploy an EAA application.
         """
@@ -491,7 +491,10 @@ class ApplicationAPI(BaseAPI):
             raise TypeError("Deploy expect and EAAItem, %s provided" % type(app_moniker))
         if app_moniker.objtype != EAAItem.Type.Application:
             raise ValueError("EAAItem object must be app, %s found" % app_moniker.objtype.value)
-        deploy = self.post('mgmt-pop/apps/{applicationId}/deploy'.format(applicationId=app_moniker.uuid))
+        payload = {}
+        if comment:
+            payload["deploy_note"] = comment
+        deploy = self.post('mgmt-pop/apps/{applicationId}/deploy'.format(applicationId=app_moniker.uuid), json=payload)
         logging.info("ApplicationAPI: deploy app response: %s" % deploy.status_code)
         if deploy.status_code != 200:
             logging.error(deploy.text)
