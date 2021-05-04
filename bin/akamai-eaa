@@ -128,7 +128,7 @@ class ReportingAPI(BaseAPI):
         info = {"cloudzones": []}
         resp = self.get('mgmt-pop/pops?shared=true')
         for eaa_cloudzone in resp.json().get('objects'):
-            info['cloudzone'].append(eaa_cloudzone.get('region'))
+            info['cloudzones'].append(eaa_cloudzone.get('region'))
         print(dumps(info, indent=4))
 
 
