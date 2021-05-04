@@ -123,6 +123,12 @@ Delete an application
 akamai eaa app app://mD_Pw1XASpyVJc2JwgICTg delete
 ```
 
+Deploy an application, you can optionally add a comment to keep track of the change:
+```
+akamai eaa app app://mD_Pw1XASpyVJc2JwgICTg deploy --comment "[TICKET1234] Update service account credentials"
+```
+
+
 One question we often get: *What are the applications using connector `xyz`?*\
 Buckle up, we use `jq` and `grep`.\
 Note: we use `-b` to avoid the extra info the CLI spills out, like the footer.
