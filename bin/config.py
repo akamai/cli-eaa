@@ -145,6 +145,8 @@ class EdgeGridConfig():
 
         subparsers.add_parser('idp', aliases=["i"], help='Manage EAA Identity Providers')
 
+        subparsers.add_parser('info', help='Display tenant info')
+
         subparsers.add_parser('version', help='Display cli-eaa module version')
 
         parser.add_argument('--batch', '-b', default=False, action='store_true',

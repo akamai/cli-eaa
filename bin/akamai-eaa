@@ -27,6 +27,7 @@ import time
 import platform
 import logging
 import fnmatch
+from json import dumps
 
 # cli-eaa
 import _paths
@@ -123,6 +124,13 @@ class ReportingAPI(BaseAPI):
             ))
         cli.footer("%s unique EAA Clients checked-in in the last 30 days" % count)
 
+    def tenant_info(self):
+        info = {"cloudzones": []}
+        resp = self.get('mgmt-pop/pops?shared=true')
+        for eaa_cloudzone in resp.json().get('objects'):
+            info['cloudzone'].append(eaa_cloudzone.get('region'))
+        print(dumps(info, indent=4))
+
 
 if __name__ == "__main__":
 
@@ -192,6 +200,9 @@ if __name__ == "__main__":
             r = ReportingAPI(config)
             if config.report_name == "clients":
                 r.clients()
+        elif config.command in ("info", ):
+            r = ReportingAPI(config)
+            r.tenant_info()
         else:
             config.parser.print_help()
             sys.exit(1)
