@@ -21,6 +21,7 @@ import time
 import signal
 import os
 import json
+import re
 
 # 3rd party modules
 import requests
@@ -28,7 +29,7 @@ import six
 
 # cli-eaa modules
 import common
-from common import config, cli
+from common import config, cli, isfloat
 
 SOURCE = 'akamai-cli/eaa'
 
@@ -60,6 +61,18 @@ class EventLogAPI(common.BaseAPI):
             self._output = sys.stdout
         self.line_count = 0
         self.error_count = 0
+        # Pre-compile the dictionary output
+        userlog_pattern = r'^([^\s]*)\s(?P<username>[\w\-]*)\s(?P<apphost>[\w\.\-]+)\s(?P<http_method>[A-Z]+)-(?P<url_path>.*)\-(?P<http_ver>HTTP/[0-9\.]*)\s(?P<referer>[^\s]*)\s(?P<status_code>[0-9]*)\s(?P<idpinfo>[^\s]*)\s(?P<clientip>[^\s]*)\s(?P<http_verb2>[^\s]*)\s(?P<total_resp_time>[^\s]*)\s(?P<connector_resp_time>[^\s]*)\s(?P<datetime>[^\s]*)\s(?P<origin_resp_time>[^\s]*)\s(?P<origin_host>[^\s]*)\s(?P<req_size>[^\s]*)\s(?P<content_type>[^\s]*)\s(?P<user_agent>[^\s]*)\s(?P<device_os>[^\s]*)\s(?P<device_type>[^\s]*)\s(?P<geo_city>[^\s]*)\s(?P<geo_state>[^\s]*)\s(?P<geo_statecode>[^\s]*)\s(?P<geo_countrycode>[^\s]*)\s(?P<geo_country>[^\s]*)\s(?P<internal_host>[^\s]*)\s(?P<session_info>[^\s]*)\s(?P<groups>[^\s]*)\s(?P<session_id>.*)[\s.*|]'
+        self._userlog_regexp = re.compile(userlog_pattern)
+
+    def userlog_prepjson(d):
+        if str.isdigit(d.get('req_size')):
+            d['req_size'] = int(d['req_size'])
+        if str.isdigit(d.get('status_code')):
+            d['status_code'] = int(d['status_code'])
+        if isfloat(d.get('total_resp_time')):
+            d['total_resp_time'] = float(d['total_resp_time'])
+        return d
 
     def get_api_url(self, logtype):
         if logtype == self.EventType.ADMIN:
@@ -116,7 +129,11 @@ class EventLogAPI(common.BaseAPI):
                             local_time = datetime.datetime.fromtimestamp(int(timestamp)/1000)
                             if isinstance(response, dict) and 'flog' in response:
                                 line = "%s\n" % ' '.join([local_time.isoformat(), response['flog']])
-                                output.write(line)
+                                if config.json:
+                                    result = self._userlog_regexp.search(line)
+                                    cli.print(json.dumps(EventLogAPI.userlog_prepjson(result.groupdict())))
+                                else:
+                                    output.write(line)
                                 logging.debug("### flog ## %s" % response['flog'])
                                 self.line_count += 1
                                 count += 1
@@ -127,7 +144,23 @@ class EventLogAPI(common.BaseAPI):
                         try:
                             local_time = datetime.datetime.fromtimestamp(int(item.get('ts')/1000))
                             line = u"{},{}\n".format(local_time.isoformat(), item.get('splunk_line'))
-                            output.write(line)
+                            if config.json:
+                                admin_event_data = line.split(',')
+                                if isinstance(admin_event_data, list) and len(admin_event_data) == 6:
+                                    admin_event_dict = {
+                                        'datetime': admin_event_data[0],
+                                        'username': admin_event_data[1],
+                                        'resource_type': admin_event_data[2],
+                                        'resource': admin_event_data[3],
+                                        'event': admin_event_data[4],
+                                        'event_type': admin_event_data[5].strip()
+                                    }
+                                    output.write(json.dumps(admin_event_dict))
+                                    output.write("\n")
+                                else:
+                                    cli.print_error("Error parsing line ")
+                            else:
+                                output.write(line)
                             self.line_count += 1
                             count += 1
                         except Exception as e:

@@ -255,3 +255,11 @@ class BaseAPI(object):
         if response.status_code != 200:
             logging.info("BaseAPI: DELETE response body: %s" % response.text)
         return response
+
+
+def isfloat(value):
+    try:
+        float(value)
+        return True
+    except ValueError:
+        return False
