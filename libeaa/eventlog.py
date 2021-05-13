@@ -72,6 +72,10 @@ class EventLogAPI(common.BaseAPI):
             d['status_code'] = int(d['status_code'])
         if isfloat(d.get('total_resp_time')):
             d['total_resp_time'] = float(d['total_resp_time'])
+        if isfloat(d.get('connector_resp_time')):
+            d['connector_resp_time'] = float(d['connector_resp_time'])
+        if isfloat(d.get('origin_resp_time')):
+            d['origin_resp_time'] = float(d['origin_resp_time'])
         return d
 
     def get_api_url(self, logtype):
