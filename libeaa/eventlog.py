@@ -131,7 +131,7 @@ class EventLogAPI(common.BaseAPI):
                                 line = "%s\n" % ' '.join([local_time.isoformat(), response['flog']])
                                 if config.json:
                                     result = self._userlog_regexp.search(line)
-                                    cli.print(json.dumps(EventLogAPI.userlog_prepjson(result.groupdict())))
+                                    output.write(json.dumps(EventLogAPI.userlog_prepjson(result.groupdict())))
                                 else:
                                     output.write(line)
                                 logging.debug("### flog ## %s" % response['flog'])
