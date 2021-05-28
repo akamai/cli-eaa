@@ -135,7 +135,7 @@ class EventLogAPI(common.BaseAPI):
                                 line = "%s\n" % ' '.join([local_time.isoformat(), response['flog']])
                                 if config.json:
                                     result = self._userlog_regexp.search(line)
-                                    output.write(json.dumps(EventLogAPI.userlog_prepjson(result.groupdict())))
+                                    output.write("%s\n" % json.dumps(EventLogAPI.userlog_prepjson(result.groupdict())))
                                 else:
                                     output.write(line)
                                 logging.debug("### flog ## %s" % response['flog'])
@@ -159,8 +159,7 @@ class EventLogAPI(common.BaseAPI):
                                         'event': admin_event_data[4],
                                         'event_type': admin_event_data[5].strip()
                                     }
-                                    output.write(json.dumps(admin_event_dict))
-                                    output.write("\n")
+                                    output.write("%s\n" % json.dumps(admin_event_dict))
                                 else:
                                     cli.print_error("Error parsing line ")
                             else:
@@ -228,7 +227,7 @@ class EventLogAPI(common.BaseAPI):
                 s = time.time()
                 logging.info("Fetching log[%s] from %s to %s..." % (log_type, sts, ets))
                 if log_type == log_type.ADMIN:
-                    if not config.batch:
+                    if not config.batch and out.seekable():
                         cli.print("#DatetimeUTC,AdminID,ResourceType,Resource,Event,EventType")
                 out.write
                 scroll_id = None
@@ -249,7 +248,7 @@ class EventLogAPI(common.BaseAPI):
                     if scroll_id is None:
                         break
                 if not config.tail:
-                    if not config.batch:
+                    if not config.batch and out.seekable():
                         total_bytes = out.tell() - start_position
                         cli.print("# Start: %s (EPOCH %d)" %
                                   (time.strftime('%m/%d/%Y %H:%M:%S UTC', time.gmtime(sts/1000.)), sts/1000.))
