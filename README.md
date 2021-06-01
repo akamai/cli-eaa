@@ -261,7 +261,6 @@ idp://idpid-1,Bogus IdP to test EME-365,Pending
 
 ## Known Limitations
 
-- Akamai CLI `--proxy` option is not supported
 - While updating an application from a JSON, only a subset of the data will be updated in the back-end, not the entire application configuration
 
 ## Troubleshooting and Support

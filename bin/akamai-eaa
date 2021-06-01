@@ -182,7 +182,7 @@ if __name__ == "__main__":
                 perf = False
                 if hasattr(config, 'perf'):
                     perf = config.perf
-                c.list(perf=perf)
+                c.list(perf, config.json, config.tail)
         elif config.command in ("certificate", "cert"):
             c = CertificateAPI(config)
             if config.action is None or config.action == "list" or config.certificate_id is None:

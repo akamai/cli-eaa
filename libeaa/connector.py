@@ -14,6 +14,8 @@
 
 import logging
 from multiprocessing import Pool
+import time
+import json
 
 from common import cli, BaseAPI, EAAItem
 from application import ApplicationAPI
@@ -23,9 +25,10 @@ class ConnectorAPI(BaseAPI):
     """
     Handle interactions with EAA Connector API
     """
-    POOL_SIZE = 6     # When doing sub request, max concurrency of underlying HTTP request
-    LIMIT_SOFT = 256  # Soft limit of maximum of connectors to retreive at once
-    NODATA = "-"      # Output value in the CSV cell if data is not available
+    POOL_SIZE = 6        # When doing sub request, max concurrency of underlying HTTP request
+    LIMIT_SOFT = 256     # Soft limit of maximum of connectors to retreive at once
+    NODATA = "-"         # Output value in the CSV cell if data is not available
+    NODATA_JSON = None   # Output value in the CSV cell if data is not available
 
     def __init__(self, config):
         super(ConnectorAPI, self).__init__(config, api=BaseAPI.API_Version.OpenAPI)
@@ -87,9 +90,10 @@ class ConnectorAPI(BaseAPI):
                     perf_by_host[perf_by_app.get('app_name')] = perf_by_app.get('histogram_data')[-1]
         return perf_by_host
 
-    def list(self, perf=False):
+    def list_once(self, perf=False, json_fmt=False):
         """
-        Display the list of EAA connectors as comma separated CSV
+        Display the list of EAA connectors as comma separated CSV or JSON
+        TODO: refactor this method, too long
         """
         url_params = {'expand': 'true', 'limit': ConnectorAPI.LIMIT_SOFT}
         data = self.get('mgmt-pop/agents', params=url_params)
@@ -107,31 +111,81 @@ class ConnectorAPI(BaseAPI):
                 perf_res_list = p.map(self.perf_system, [c.get('uuid_url') for c in connectors.get('objects', [])])
             perf_res = dict(perf_res_list)
 
-        cli.header(header)
+        if not json_fmt:
+            cli.header(header)
         perf_latest = {}
         for total_con, c in enumerate(connectors.get('objects', []), start=1):
             if perf:
                 perf_latest = perf_res.get(c.get('uuid_url'), {})
-            cli.print(format_line.format(
-                scheme=EAAItem.Type.Connector.scheme,
-                con_id=c.get('uuid_url'),
-                name=c.get('name'),
-                reachable=c.get('reach'),
-                status=c.get('status'),
-                version=((c.get('agent_version') or ConnectorAPI.NODATA)).replace('AGENT-', '').strip(),
-                privateip=c.get('private_ip') or ConnectorAPI.NODATA,
-                publicip=c.get('public_ip') or ConnectorAPI.NODATA,
-                debugchan='Y' if c.get('debug_channel_permitted') else 'N',
-                ts=perf_latest.get('timestamp') or ConnectorAPI.NODATA,
-                cpu=perf_latest.get('cpu_pct') or ConnectorAPI.NODATA,
-                disk=perf_latest.get('disk_pct') or ConnectorAPI.NODATA,
-                mem=perf_latest.get('mem_pct') or ConnectorAPI.NODATA,
-                network=perf_latest.get('network_traffic_mbps') or ConnectorAPI.NODATA,
-                dialout_total=perf_latest.get('dialout_total') or ConnectorAPI.NODATA,
-                dialout_idle=perf_latest.get('dialout_idle') or ConnectorAPI.NODATA,
-                dialout_active=perf_latest.get('dialout_active') or ConnectorAPI.NODATA
-            ))
-        cli.footer("Total %s connector(s)" % total_con)
+            data = {
+                "connector_uuid": c.get('uuid_url'),
+                "name": c.get('name'),
+                "reachable": c.get('reach'),
+                "status": c.get('status'),
+                "version": ((c.get('agent_version') or ConnectorAPI.NODATA_JSON)).replace('AGENT-', '').strip(),
+                "privateip": c.get('private_ip') or ConnectorAPI.NODATA_JSON,
+                "publicip": c.get('public_ip') or ConnectorAPI.NODATA_JSON,
+                "debugchan": 'Y' if c.get('debug_channel_permitted') else 'N'
+            }
+            if perf:
+                data.update({
+                    "ts": perf_latest.get('timestamp') or ConnectorAPI.NODATA_JSON,
+                    "cpu": perf_latest.get('cpu_pct') or ConnectorAPI.NODATA_JSON,
+                    "disk": perf_latest.get('disk_pct') or ConnectorAPI.NODATA_JSON,
+                    "mem": perf_latest.get('mem_pct') or ConnectorAPI.NODATA_JSON,
+                    "network": perf_latest.get('network_traffic_mbps') or ConnectorAPI.NODATA_JSON,
+                    "dialout_total": perf_latest.get('dialout_total') or ConnectorAPI.NODATA_JSON,
+                    "dialout_idle": perf_latest.get('dialout_idle') or ConnectorAPI.NODATA_JSON,
+                    "dialout_active": perf_latest.get('dialout_active') or ConnectorAPI.NODATA_JSON
+                })
+            if not json_fmt:
+                cli.print(format_line.format(
+                    scheme=EAAItem.Type.Connector.scheme,
+                    con_id=c.get('uuid_url'),
+                    name=c.get('name'),
+                    reachable=c.get('reach'),
+                    status=c.get('status'),
+                    version=((c.get('agent_version') or ConnectorAPI.NODATA)).replace('AGENT-', '').strip(),
+                    privateip=c.get('private_ip') or ConnectorAPI.NODATA,
+                    publicip=c.get('public_ip') or ConnectorAPI.NODATA,
+                    debugchan='Y' if c.get('debug_channel_permitted') else 'N',
+                    ts=perf_latest.get('timestamp') or ConnectorAPI.NODATA,
+                    cpu=perf_latest.get('cpu_pct') or ConnectorAPI.NODATA,
+                    disk=perf_latest.get('disk_pct') or ConnectorAPI.NODATA,
+                    mem=perf_latest.get('mem_pct') or ConnectorAPI.NODATA,
+                    network=perf_latest.get('network_traffic_mbps') or ConnectorAPI.NODATA,
+                    dialout_total=perf_latest.get('dialout_total') or ConnectorAPI.NODATA,
+                    dialout_idle=perf_latest.get('dialout_idle') or ConnectorAPI.NODATA,
+                    dialout_active=perf_latest.get('dialout_active') or ConnectorAPI.NODATA
+                ))
+            else:
+                cli.print(json.dumps(data))
+        if not json_fmt:
+            cli.footer("Total %s connector(s)" % total_con)
+
+    def list(self, perf, json_fmt, follow=False, stopEvent=None):
+        """
+        List the connector and their attributes and status
+        The default output is CSV
+
+        Args:
+            perf (bool): Add performance data (cpu, mem, disk, dialout)
+            json_fmt (bool): Output as JSON instead of CSV
+            follow (bool): Never stop until Control+C or SIGTERM is received
+        """
+        interval_sec = 5 * 60  # Interval in seconds between pulling the API, default is 5 minutes
+        while True or (stopEvent and not stopEvent.is_set()):
+            start = time.time()
+            self.list_once(perf, json_fmt)
+            if follow:
+                sleep_time = interval_sec - (time.time() - start)
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
+                else:
+                    logging.error(f"The EAA Connector API is slow to respond (could be also a proxy in the middle), holding for {interval_sec} sec.")
+                    time.sleep(interval_sec)
+            else:
+                break
 
     def findappbyconnector(self, connector_moniker):
         """
