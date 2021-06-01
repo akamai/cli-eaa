@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 class EdgeGridConfig():
 
     parser = argparse.ArgumentParser(prog="akamai eaa",
-                                     description='Process command line options.')
+                                     description='Enterprise Application Access (EAA) for Akamai CLI')
 
     def __init__(self, config_values, configuration, flags=None):
         parser = self.parser
@@ -140,6 +140,8 @@ class EdgeGridConfig():
 
         list_parser = subsub.add_parser("list", help="List all connectors")
         list_parser.add_argument('--perf', default=False, action="store_true", help='Show performance metrics')
+        list_parser.add_argument('--json', '-j', default=False, action="store_true", help='View as JSON')
+        list_parser.add_argument('--tail', '-f', default=False, action="store_true", help='Keep watching, do not exit until Control+C/SIGTERM')
         # subparsers.required = False
         swap_parser = subsub.add_parser("swap", help="Swap connector with another one")
         swap_parser.add_argument(dest="new_connector_id", help='New connector ID')
