@@ -180,9 +180,12 @@ if __name__ == "__main__":
                 # Unless the long form "akamai eaa connector list" is used
                 # the ArgumentParser won't have the attribute set
                 perf = False
+                tail = False
                 if hasattr(config, 'perf'):
                     perf = config.perf
-                c.list(perf, config.json, config.tail)
+                if hasattr(config, 'tail'):
+                    tail = config.tail
+                c.list(perf, config.json, tail)
         elif config.command in ("certificate", "cert"):
             c = CertificateAPI(config)
             if config.action is None or config.action == "list" or config.certificate_id is None:
