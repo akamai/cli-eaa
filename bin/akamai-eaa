@@ -170,22 +170,19 @@ if __name__ == "__main__":
             a.process_command()
         elif config.command in ("connector", "c"):
             c = ConnectorAPI(config)
+            perf = hasattr(config, 'perf') and config.perf
             if config.action == "swap":
                 c.swap(config.connector_id, config.new_connector_id, config.dryrun)
             elif config.action == "apps":
                 con_moniker = EAAItem(config.connector_id)
-                c.list_apps(con_moniker, perf=config.perf)
+                c.list_apps(con_moniker, perf=perf)
             else:
                 # if command is "akamai eaa connector" we default to "list"
                 # Unless the long form "akamai eaa connector list" is used
                 # the ArgumentParser won't have the attribute set
-                perf = False
-                tail = False
-                if hasattr(config, 'perf'):
-                    perf = config.perf
-                if hasattr(config, 'tail'):
-                    tail = config.tail
-                c.list(perf, config.json, tail)
+                json = hasattr(config, 'json') and config.json
+                tail = hasattr(config, 'tail') and config.tail
+                c.list(perf, json, tail)
         elif config.command in ("certificate", "cert"):
             c = CertificateAPI(config)
             if config.action is None or config.action == "list" or config.certificate_id is None:

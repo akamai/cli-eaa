@@ -78,7 +78,7 @@ class ConnectorAPI(BaseAPI):
         Fetch app usage for a connector
 
         Args:
-            connector_id ([type]): [description]
+            connector_id (string): Connector UUID without prefix
         """
         perfapp_api_url = 'mgmt-pop/agents/{agentid}/apps_resource/metrics'.format(agentid=connector_id)
         perf_data_resp = self.get(perfapp_api_url, params={'period': '1h', 'filter_all': 'false'})
@@ -199,6 +199,7 @@ class ConnectorAPI(BaseAPI):
                 - application moniker
                 - application name
                 - application host (external hostname)
+                - dialout version (1 or 2)
 
         Raises:
             TypeError: If the argument is wrong type.
@@ -210,29 +211,45 @@ class ConnectorAPI(BaseAPI):
         apps = search_app.json()
         logging.debug("Searching app using %s..." % connector_moniker)
         for app in apps.get('objects', []):
+            # Only tunnel apps are using Dialout Version 2
+            dialout_ver = 2 if app.get('app_profile') == ApplicationAPI.Profile.TCP.value else 1
             for con in app.get('agents', []):
                 app_moniker = EAAItem("app://" + app.get('uuid_url'))
                 con_moniker = EAAItem("con://" + con.get('uuid_url'))
                 if con_moniker == connector_moniker:
-                    yield app_moniker, app.get('name'), app.get('host')
+                    yield app_moniker, \
+                          app.get('name'), \
+                          app.get('host'), \
+                          dialout_ver
 
     def list_apps(self, con_moniker, perf=False):
+        """
+        List applications attached to the connector
+
+        Args:
+            con_moniker (EAAItem): Connector UUID moniker
+            perf (bool, optional): Display performance metrics. Defaults to False.
+
+        Raises:
+            TypeError: If moniker type is not EAAItem
+        """
         if not isinstance(con_moniker, EAAItem):
             raise TypeError("con_moniker")
         if perf:
             perf_by_apphost = self.perf_apps(con_moniker.uuid)
-            line_fmt = "{app_id},{app_name},{perf_upd},{active}"
-            cli.header("#app_id,app_name,perf_upd,active")
+            line_fmt = "{app_id},{app_name},{do_ver},{perf_upd},{active}"
+            cli.header("#app_id,app_name,do_ver,perf_upd,active")
         else:
-            line_fmt = "{app_id},{app_name}"
-            cli.header("#app_id,app_name")
-        for c, (app_id, app_name, app_host) in enumerate(self.findappbyconnector(con_moniker), start=1):
+            line_fmt = "{app_id},{app_name},{do_ver}"
+            cli.header("#app_id,app_name,do_ver")
+        for c, (app_id, app_name, app_host, do_ver) in enumerate(self.findappbyconnector(con_moniker), start=1):
             perf_data = {}
             if perf:
                 perf_data = perf_by_apphost.get(app_host, {})
             cli.print(line_fmt.format(
                 app_id=app_id,
                 app_name=app_name,
+                do_ver=do_ver,
                 perf_upd=perf_data.get('timestamp', ConnectorAPI.NODATA),
                 active=perf_data.get('active', ConnectorAPI.NODATA)
             ))
