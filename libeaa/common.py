@@ -34,7 +34,7 @@ from akamai.edgegrid import EdgeGridAuth, EdgeRc
 # use the config
 config = EdgeGridConfig({'verbose': False}, 'default')
 
-__version__ = '0.3.7'
+__version__ = '0.3.8'
 
 
 class cli:
@@ -202,7 +202,7 @@ class BaseAPI(object):
                 self.extra_qs.update(parse_qs(scanned_extra_qs))
 
         if self._session:
-            self._session.headers.update({'User-Agent': "cli-eaa/%s" % __version__})
+            self._session.headers.update({'User-Agent': f"{self._config.ua_prefix} cli-eaa/{__version__}"})
             if config.proxy:
                 logging.info("Set proxy to %s" % config.proxy)
                 self._session.proxies['https'] = 'http://%s' % config.proxy
@@ -241,7 +241,7 @@ class BaseAPI(object):
     def put(self, url_path, json=None, params=None):
         url = urljoin(self._baseurl, url_path)
         logging.info("API URL: %s" % url)
-        response = self._session.put(url, json=json)
+        response = self._session.put(url, json=json, params=self.build_params(params))
         logging.info("BaseAPI: PUT response is HTTP %s" % response.status_code)
         if response.status_code != 200:
             logging.info("BaseAPI: PUT response body: %s" % response.text)
@@ -250,7 +250,7 @@ class BaseAPI(object):
     def delete(self, url_path, json=None, params=None):
         url = urljoin(self._baseurl, url_path)
         logging.info("API URL: %s" % url)
-        response = self._session.delete(url, json=json)
+        response = self._session.delete(url, json=json, params=self.build_params(params))
         logging.info("BaseAPI: DELETE response is HTTP %s" % response.status_code)
         if response.status_code != 200:
             logging.info("BaseAPI: DELETE response body: %s" % response.text)

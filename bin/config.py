@@ -163,6 +163,7 @@ class EdgeGridConfig():
         parser.add_argument('--section', '-c', default='default', metavar='credentials_file_section', action='store',
                             help=' Credentials file Section\'s name to use (\'default\' if not specified).')
         parser.add_argument('--verbose', '-v', default=False, action='count', help=' Verbose mode')
+        parser.add_argument('--user-agent-prefix', dest='ua_prefix', default='Akamai-CLI', help=argparse.SUPPRESS)
 
         if flags:
             for argument in flags.keys():
