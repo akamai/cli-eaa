@@ -27,6 +27,7 @@ import time
 import platform
 import logging
 import fnmatch
+import http.client as http_client
 from json import dumps
 
 # cli-eaa
@@ -41,9 +42,7 @@ from directory import DirectoryAPI
 
 verbose = getattr(config, 'verbose', False)
 
-LOG_FMT = '%(asctime)s [%(levelname)s] %(threadName)s %(message)s'
-log_file = None
-
+LOG_FMT = '%(asctime)s %(name)s %(levelname).1s %(message)s'
 
 class SearchAPI(BaseAPI):
     """
@@ -132,9 +131,22 @@ class ReportingAPI(BaseAPI):
         print(dumps(info, indent=4))
 
 
+def setup_logging():
+
+    logging.basicConfig(filename=config.logfile, level=cli.log_level(), format=LOG_FMT)
+
+    # Special handling for the Requests library
+    if config.debug:
+        requests_log = logging.getLogger("requests.packages.urllib3")
+        http_client.HTTPConnection.debuglevel = 1
+        def httpclient_log(*args):
+            requests_log.log(logging.DEBUG, " ".join(args))
+        http_client.print = httpclient_log
+
+
 if __name__ == "__main__":
 
-    logging.basicConfig(filename=log_file, level=cli.log_level(), format=LOG_FMT)
+    setup_logging()
     logging.debug("Python %s" % platform.python_version())
 
     try:

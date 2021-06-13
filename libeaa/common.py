@@ -34,7 +34,11 @@ from akamai.edgegrid import EdgeGridAuth, EdgeRc
 # use the config
 config = EdgeGridConfig({'verbose': False}, 'default')
 
-__version__ = '0.3.8'
+#: cli-eaa version
+__version__ = '0.3.9'
+
+#: HTTP Request Timeout in seconds
+HTTP_REQ_TIMEOUT = 300
 
 
 class cli:
@@ -223,7 +227,7 @@ class BaseAPI(object):
         Send a GET reques to the API.
         """
         url = urljoin(self._baseurl, url_path)
-        response = self._session.get(url, params=self.build_params(params))
+        response = self._session.get(url, params=self.build_params(params), timeout=HTTP_REQ_TIMEOUT)
         logging.info("BaseAPI: GET response is HTTP %s" % response.status_code)
         if response.status_code != requests.status_codes.codes.ok:
             logging.info("BaseAPI: GET response body: %s" % response.text)
@@ -232,7 +236,7 @@ class BaseAPI(object):
     def post(self, url_path, json=None, params=None):
         url = urljoin(self._baseurl, url_path)
         logging.info("API URL: %s" % url)
-        response = self._session.post(url, json=json, params=self.build_params(params))
+        response = self._session.post(url, json=json, params=self.build_params(params), timeout=HTTP_REQ_TIMEOUT)
         logging.info("BaseAPI: POST response is HTTP %s" % response.status_code)
         if response.status_code != 200:
             logging.info("BaseAPI: POST response body: %s" % response.text)
@@ -241,7 +245,7 @@ class BaseAPI(object):
     def put(self, url_path, json=None, params=None):
         url = urljoin(self._baseurl, url_path)
         logging.info("API URL: %s" % url)
-        response = self._session.put(url, json=json, params=self.build_params(params))
+        response = self._session.put(url, json=json, params=self.build_params(params), timeout=HTTP_REQ_TIMEOUT)
         logging.info("BaseAPI: PUT response is HTTP %s" % response.status_code)
         if response.status_code != 200:
             logging.info("BaseAPI: PUT response body: %s" % response.text)
@@ -250,7 +254,7 @@ class BaseAPI(object):
     def delete(self, url_path, json=None, params=None):
         url = urljoin(self._baseurl, url_path)
         logging.info("API URL: %s" % url)
-        response = self._session.delete(url, json=json, params=self.build_params(params))
+        response = self._session.delete(url, json=json, params=self.build_params(params), timeout=HTTP_REQ_TIMEOUT)
         logging.info("BaseAPI: DELETE response is HTTP %s" % response.status_code)
         if response.status_code != 200:
             logging.info("BaseAPI: DELETE response body: %s" % response.text)

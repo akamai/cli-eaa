@@ -18,12 +18,8 @@
 import sys
 import os
 import argparse
-import logging
 
 from configparser import ConfigParser
-import http.client as http_client
-
-logger = logging.getLogger(__name__)
 
 
 class EdgeGridConfig():
@@ -155,14 +151,15 @@ class EdgeGridConfig():
 
         parser.add_argument('--batch', '-b', default=False, action='store_true',
                             help='Batch mode, remove the extra header/footer in lists.')
-        parser.add_argument('--debug', '-d', default=False, action='count', help=' Debug mode (prints HTTP headers)')
+        parser.add_argument('--debug', '-d', default=False, action='count', help=' Debug mode (log HTTP headers)')
         parser.add_argument('--edgerc', '-e', default='~/.edgerc', metavar='credentials_file',
                             help=' Location of the credentials file (default is %s)' % os.path.expanduser("~/.edgerc"))
         parser.add_argument('--proxy', '-p', default='', help=''' HTTP/S Proxy Host/IP and port number, 
                                                                   do not use prefix (e.g. 10.0.0.1:8888)''')
         parser.add_argument('--section', '-c', default='default', metavar='credentials_file_section', action='store',
                             help=' Credentials file Section\'s name to use (\'default\' if not specified).')
-        parser.add_argument('--verbose', '-v', default=False, action='count', help=' Verbose mode')
+        parser.add_argument('--verbose', '-v', default=False, action='store_true', help=' Verbose mode')
+        parser.add_argument('--logfile', default=None, help=' Log file')
         parser.add_argument('--user-agent-prefix', dest='ua_prefix', default='Akamai-CLI', help=argparse.SUPPRESS)
 
         if flags:
@@ -183,14 +180,6 @@ class EdgeGridConfig():
             sys.exit(1)
 
         arguments = vars(args)
-
-        if arguments['debug']:
-            http_client.HTTPConnection.debuglevel = 1
-            logging.basicConfig()
-            logging.getLogger().setLevel(logging.DEBUG)
-            requests_log = logging.getLogger("requests.packages.urllib3")
-            requests_log.setLevel(logging.DEBUG)
-            requests_log.propagate = True
 
         if "section" in arguments and arguments["section"]:
             configuration = arguments["section"]
