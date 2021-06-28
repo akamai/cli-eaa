@@ -50,6 +50,8 @@ class EventLogAPI(common.BaseAPI):
 
     ADMINEVENT_API = "adminevents-reports/ops/splunk-query"
     ACCESSLOG_API = "analytics/ops"
+    ACCESSLOG_API_V2 = "analytics/ops-data"
+
 
     def __init__(self, config):
         super(EventLogAPI, self).__init__(config, api=common.BaseAPI.API_Version.Legacy)
@@ -62,8 +64,8 @@ class EventLogAPI(common.BaseAPI):
         self.line_count = 0
         self.error_count = 0
         # Pre-compile the dictionary output
-        userlog_pattern = r'^([^\s]*)\s(?P<username>[\w\-]*)\s(?P<apphost>[\w\.\-]+)\s(?P<http_method>[A-Z]+)-(?P<url_path>.*)\-(?P<http_ver>HTTP/[0-9\.]*)\s(?P<referer>[^\s]*)\s(?P<status_code>[0-9]*)\s(?P<idpinfo>[^\s]*)\s(?P<clientip>[^\s]*)\s(?P<http_verb2>[^\s]*)\s(?P<total_resp_time>[^\s]*)\s(?P<connector_resp_time>[^\s]*)\s(?P<datetime>[^\s]*)\s(?P<origin_resp_time>[^\s]*)\s(?P<origin_host>[^\s]*)\s(?P<req_size>[^\s]*)\s(?P<content_type>[^\s]*)\s(?P<user_agent>[^\s]*)\s(?P<device_os>[^\s]*)\s(?P<device_type>[^\s]*)\s(?P<geo_city>[^\s]*)\s(?P<geo_state>[^\s]*)\s(?P<geo_statecode>[^\s]*)\s(?P<geo_countrycode>[^\s]*)\s(?P<geo_country>[^\s]*)\s(?P<internal_host>[^\s]*)\s(?P<session_info>[^\s]*)\s(?P<groups>[^\s]*)\s(?P<session_id>.*)[\s.*|]'
-        self._userlog_regexp = re.compile(userlog_pattern)
+        self.userlog_pattern = r'^([^\s]*)\s(?P<username>[^\s]*)\s(?P<apphost>[\w\.\-]+)\s(?P<http_method>[A-Z]+)-(?P<url_path>.*)\-(?P<http_ver>HTTP/[0-9\.]*)\s(?P<referer>[^\s]*)\s(?P<status_code>[0-9]*)\s(?P<idpinfo>[^\s]*)\s(?P<clientip>[^\s]*)\s(?P<http_verb2>[^\s]*)\s(?P<total_resp_time>[^\s]*)\s(?P<connector_resp_time>[^\s]*)\s(?P<datetime>[^\s]*)\s(?P<origin_resp_time>[^\s]*)\s(?P<origin_host>[^\s]*)\s(?P<req_size>[^\s]*)\s(?P<content_type>[^\s]*)\s(?P<user_agent>[^\s]*)\s(?P<device_os>[^\s]*)\s(?P<device_type>[^\s]*)\s(?P<geo_city>[^\s]*)\s(?P<geo_state>[^\s]*)\s(?P<geo_statecode>[^\s]*)\s(?P<geo_countrycode>[^\s]*)\s(?P<geo_country>[^\s]*)\s(?P<internal_host>[^\s]*)\s(?P<session_info>[^\s]*)\s(?P<groups>[^\s]*)\s(?P<session_id>.*)[\s.*|]'
+        self._userlog_regexp = re.compile(self.userlog_pattern)
 
     def userlog_prepjson(d):
         if str.isdigit(d.get('req_size')):
@@ -78,13 +80,18 @@ class EventLogAPI(common.BaseAPI):
             d['origin_resp_time'] = float(d['origin_resp_time'])
         return d
 
-    def get_api_url(self, logtype):
+    def get_api_url(self, logtype, logversion):
         if logtype == self.EventType.ADMIN:
             return self.ADMINEVENT_API
         else:
-            return self.ACCESSLOG_API
+            if logversion == 1:
+                return self.ACCESSLOG_API
+            elif logversion == 2:
+                return self.ACCESSLOG_API_V2
+            else:
+                raise Exception(f"Unknown access log version {logversion}")
 
-    def get_logs(self, drpc_args, logtype=EventType.USER_ACCESS, output=None):
+    def get_logs(self, drpc_args, logtype=EventType.USER_ACCESS, logversion=1, output=None):
         """
         Fetch the logs, by default the user access logs.
         """
@@ -94,7 +101,7 @@ class EventLogAPI(common.BaseAPI):
         scroll_id = None
         try:
             # Fetches the logs for given drpc args
-            resp = self.post(self.get_api_url(logtype), json=drpc_args)
+            resp = self.post(self.get_api_url(logtype, logversion), json=drpc_args)
             if resp.status_code != requests.codes.ok:
                 logging.error("Invalid API response status code: %s" % resp.status_code)
                 return None
@@ -106,8 +113,12 @@ class EventLogAPI(common.BaseAPI):
                 # Get msg and scroll_id based on the type of logs
                 # Since it is two different API in the back-end
                 if logtype == self.EventType.USER_ACCESS:
-                    msg = resj.get('message')[0][1]
-                    scroll_id = msg.get('scroll_id')
+                    if logversion == 1:
+                        msg = resj.get('message')[0][1]
+                        scroll_id = msg.get('scroll_id')
+                    elif logversion == 2:
+                        msg = resj.get('message')[0][0]
+                        scroll_id = msg.get('scroll_id')
                 elif logtype == self.EventType.ADMIN:
                     msg = resj.get('message')
                     if 'scroll_id' in msg.get('metadata'):
@@ -119,30 +130,48 @@ class EventLogAPI(common.BaseAPI):
                 count = 0
 
                 if logtype == self.EventType.USER_ACCESS:
-                    for timestamp, response in six.iteritems(msg):
-                        try:
-                            if not timestamp.isdigit():
-                                logging.debug("Ignored timestamp '%s': %s" % (timestamp, response))
-                                continue
-                            logging.debug("flog is %s" % type(response['flog']).__name__)
-                            logging.debug("Scanned timestamp: %s" % timestamp)
-                            if int(timestamp) < int(drpc_args.get('sts')):
-                                raise Exception("Out of bound error: incoming event time %s vs. start set to %s" % (timestamp, drpc_args.get('sts')))
-                            if int(timestamp) >= int(drpc_args.get('ets')):
-                                raise Exception("Out of bound error: incoming event time %s vs. end set to %s" % (timestamp, drpc_args.get('ets')))
-                            local_time = datetime.datetime.fromtimestamp(int(timestamp)/1000)
-                            if isinstance(response, dict) and 'flog' in response:
-                                line = "%s\n" % ' '.join([local_time.isoformat(), response['flog']])
-                                if config.json:
-                                    result = self._userlog_regexp.search(line)
-                                    output.write("%s\n" % json.dumps(EventLogAPI.userlog_prepjson(result.groupdict())))
-                                else:
-                                    output.write(line)
-                                logging.debug("### flog ## %s" % response['flog'])
-                                self.line_count += 1
-                                count += 1
-                        except Exception:
-                            logging.exception("Error parsing access log line")
+                    # V1 will be relavant till around EAA 2021.03 release
+                    if logversion == 1:
+                        for timestamp, response in six.iteritems(msg):
+                            try:
+                                if not timestamp.isdigit():
+                                    logging.debug("Ignored timestamp '%s': %s" % (timestamp, response))
+                                    continue
+                                logging.debug("flog is %s" % type(response['flog']).__name__)
+                                logging.debug("Scanned timestamp: %s" % timestamp)
+                                if int(timestamp) < int(drpc_args.get('sts')):
+                                    raise Exception("Out of bound error: incoming event time %s vs. start set to %s" % (timestamp, drpc_args.get('sts')))
+                                if int(timestamp) >= int(drpc_args.get('ets')):
+                                    raise Exception("Out of bound error: incoming event time %s vs. end set to %s" % (timestamp, drpc_args.get('ets')))
+                                local_time = datetime.datetime.fromtimestamp(int(timestamp)/1000)
+                                if isinstance(response, dict) and 'flog' in response:
+                                    line = "%s\n" % ' '.join([local_time.isoformat(), response['flog']])
+                                    if config.json:
+                                        result = self._userlog_regexp.search(line)
+                                        output.write("%s\n" % json.dumps(EventLogAPI.userlog_prepjson(result.groupdict())))
+                                    else:
+                                        output.write(line)
+                                    logging.debug("### flog ## %s" % response['flog'])
+                                    self.line_count += 1
+                                    count += 1
+                            except Exception:
+                                logging.exception("Error parsing access log line")
+                    # V2 will be available starting 2021.02, will return 404 before
+                    elif logversion == 2:
+                        logging.info(json.dumps(msg, indent=2))
+                        for e in resj.get('message')[0][1].get('data'):
+                            local_time = datetime.datetime.fromtimestamp(e.get('ts')/1000)
+                            line = "%s\n" % ' '.join([local_time.isoformat(), e.get('flog')])
+                            if config.json:
+                                result = self._userlog_regexp.search(line)
+                                if result is None:
+                                    raise Exception(f"Regexp {self.userlog_pattern} failed with data: {line}")
+                                output.write("%s\n" % json.dumps(EventLogAPI.userlog_prepjson(result.groupdict())))
+                            else:
+                                output.write(line)
+                            logging.debug(f"### flog v2 ## {e}")
+                            self.line_count += 1
+                            count += 1
                 elif logtype == self.EventType.ADMIN:
                     for item in msg.get('data'):
                         try:
@@ -222,16 +251,15 @@ class EventLogAPI(common.BaseAPI):
             else:
                 start_position = 0
 
-            while True:
+            while not stop_event.is_set():
                 ets, sts = EventLogAPI.date_boundaries()
                 s = time.time()
                 logging.info("Fetching log[%s] from %s to %s..." % (log_type, sts, ets))
                 if log_type == log_type.ADMIN:
                     if not config.batch and out.seekable():
                         cli.print("#DatetimeUTC,AdminID,ResourceType,Resource,Event,EventType")
-                out.write
                 scroll_id = None
-                while (True):
+                while not stop_event.is_set():
                     drpc_args = {
                         'sts': str(sts),
                         'ets': str(ets),
@@ -243,7 +271,7 @@ class EventLogAPI(common.BaseAPI):
                     }
                     if scroll_id is not None:
                         drpc_args.update({'scroll_id': str(scroll_id)})
-                    scroll_id = self.get_logs(drpc_args, log_type, out)
+                    scroll_id = self.get_logs(drpc_args, log_type, config.log_version, out)
                     out.flush()
                     if scroll_id is None:
                         break
