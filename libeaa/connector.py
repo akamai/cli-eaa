@@ -117,12 +117,17 @@ class ConnectorAPI(BaseAPI):
         for total_con, c in enumerate(connectors.get('objects', []), start=1):
             if perf:
                 perf_latest = perf_res.get(c.get('uuid_url'), {})
+
+            agent_version = c.get('agent_version') or ConnectorAPI.NODATA_JSON
+            if agent_version:
+                agent_version = agent_version.replace('AGENT-', '').strip()
+
             data = {
                 "connector_uuid": c.get('uuid_url'),
                 "name": c.get('name'),
                 "reachable": c.get('reach'),
                 "status": c.get('status'),
-                "version": ((c.get('agent_version') or ConnectorAPI.NODATA_JSON)).replace('AGENT-', '').strip(),
+                "version": agent_version,
                 "privateip": c.get('private_ip') or ConnectorAPI.NODATA_JSON,
                 "publicip": c.get('public_ip') or ConnectorAPI.NODATA_JSON,
                 "debugchan": 'Y' if c.get('debug_channel_permitted') else 'N'
