@@ -159,7 +159,7 @@ class EventLogAPI(common.BaseAPI):
                     # V2 will be available starting 2021.02, will return 404 before
                     elif logversion == 2:
                         logging.info(json.dumps(msg, indent=2))
-                        for e in resj.get('message')[0][1].get('data'):
+                        for e in resj.get('message', [])[0][1].get('data', []):
                             local_time = datetime.datetime.fromtimestamp(e.get('ts')/1000)
                             line = "%s\n" % ' '.join([local_time.isoformat(), e.get('flog')])
                             if config.json:

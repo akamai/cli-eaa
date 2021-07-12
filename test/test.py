@@ -37,8 +37,10 @@ import shlex
 import time
 from pathlib import Path
 import collections
-import tempfile
 import os
+import requests
+import json
+
 
 # Global variables
 encoding = 'utf-8'
@@ -51,9 +53,22 @@ class CliEAATest(unittest.TestCase):
     def setUp(self):
         self.testdir = Path(__file__).resolve().parent
         self.maindir = Path(__file__).resolve().parent.parent
+        edgerc = CliEAATest.config_edgerc()
+        if not os.path.isfile(edgerc):
+            self.fail(f'EdgeRC file {edgerc} doesn\'t exist.')
 
     def cli_command(self, *args):
         command = shlex.split(f'python3 {self.maindir}/bin/akamai-eaa')
+        section = CliEAATest.config_section()
+        # Core CLI arguments goes first
+        if '--section' not in args and section:
+            command.append('--section')
+            command.append(section)            
+        edgerc = CliEAATest.config_edgerc()
+        if '--edgerc' not in args and section:
+            command.append('--edgerc')
+            command.append(edgerc)            
+        # Then CLI-EAA arguments
         command.extend(*args)
         print("\nSHELL COMMAND: ", shlex.join(command))
         return command
@@ -79,11 +94,38 @@ class CliEAATest(unittest.TestCase):
                 total_count += 1
         return total_count
 
+    def config_section():
+        return os.getenv('SECTION', 'default')
+
+    def config_edgerc():
+        return os.getenv('EDGERC', os.path.expanduser("~/.edgerc"))
 
 class TestEvents(CliEAATest):
 
     after = int(time.time() - 15 * 60)
     before = int(time.time())
+
+    @classmethod
+    def setUpClass(cls):
+        cls.after = int(time.time())
+        cls.config_testapp_url()
+        cls.before = int(time.time())
+
+    @classmethod
+    def config_testapp_url(cls):
+        """
+        Generate some traffic against a webapp defined
+        """
+        delay = 15
+        url = os.getenv('URL_TEST_TRAFFIC')
+        print(f"Test fingerprint: {id(cls):x}")
+        if url:
+            for i in range(0, 10):
+                resp = requests.get(url + f"/?__unittest={id(cls):x}")
+                print(f"{i}:", url, resp)
+                # time.sleep(0.3)
+            print(f"Now waiting {delay}s to get the log collected")
+            time.sleep(delay)
 
     def test_useraccess_log_raw(self):
         """
@@ -96,6 +138,16 @@ class TestEvents(CliEAATest):
         self.assertGreater(event_count, 0, "We expect at least one user access event")
         self.assertEqual(cmd.returncode, 0, 'return code must be 0')
 
+    def test_useraccess_log_raw_v2(self):
+        """
+        Fetch User Access log events (RAW format) using the API v2 introduced in EAA 2021.02
+        """
+        cmd = self.cli_run("log", "access", "-2", "--start", self.after, "--end", self.before)
+        stdout, stderr = cmd.communicate(timeout=60)
+        events = stdout.decode(encoding)
+        event_count = len(events.splitlines())
+        self.assertGreater(event_count, 0, "We expect at least one user access event")
+        self.assertEqual(cmd.returncode, 0, 'return code must be 0')
 
     def test_admin_log_raw(self):
         """
@@ -126,6 +178,22 @@ class TestEvents(CliEAATest):
         self.assertGreater(event_count, 0, "We expect at least one user access event")
         self.assertEqual(cmd.returncode, 0, 'return code must be 0')
 
+
+    def test_useraccess_log_json_v2(self):
+        """
+        Fetch User Access log events (JSON format)
+        """
+        cmd = self.cli_run("log", "access", "-2", "--start", self.after, "--end", self.before, "--json")
+        stdout, stderr = cmd.communicate(timeout=60)
+        scanned_events = stdout.decode(encoding)
+        lines = scanned_events.splitlines()
+        for l in lines:
+            event = json.loads(l)
+            print(json.dumps(event, indent=2))
+        
+        event_count = len(lines)
+        self.assertGreater(event_count, 0, "We expect at least one user access event")
+        self.assertEqual(cmd.returncode, 0, 'return code must be 0')
 
 class TestApplication(CliEAATest):
 
