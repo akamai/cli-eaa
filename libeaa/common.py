@@ -35,7 +35,7 @@ from akamai.edgegrid import EdgeGridAuth, EdgeRc
 config = EdgeGridConfig({'verbose': False}, 'default')
 
 #: cli-eaa version
-__version__ = '0.3.9'
+__version__ = '0.4.0'
 
 #: HTTP Request Timeout in seconds
 HTTP_REQ_TIMEOUT = 300
