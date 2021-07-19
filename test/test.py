@@ -23,12 +23,20 @@ cd [cli-eaa-directory]
 pip install nose nose2-html-report
 ```
 
-## Tested with nose2
+## Test with nose2
 ```bash
 cd test
 nose2 --html-report -v
 open report.html
 ```
+
+## Test with pytest-html
+See https://pytest-html.readthedocs.io/en/latest/
+```
+cd test
+URL_TEST_TRAFFIC=https://login:password@myclassicapp.go.akamai-access.com pytest --html=report.html --self-contained-html test.py
+```
+
 """
 
 import unittest
@@ -40,11 +48,14 @@ import collections
 import os
 import requests
 import json
+import re
 
 
 # Global variables
 encoding = 'utf-8'
 
+def pytest_html_report_title(report):
+    report.title = "Akamai cli-eaa"
 
 class CliEAATest(unittest.TestCase):
     testdir = None
@@ -76,6 +87,14 @@ class CliEAATest(unittest.TestCase):
     def cli_run(self, *args):
         cmd = subprocess.Popen(self.cli_command(str(a) for a in args), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return cmd
+
+    def url_safe_print(url):
+        """
+        Securely print the output of a URL that may have authentication credentials.
+        """
+        pattern = re.compile(r'(\b(?:[a-z]{,5})://.*:)(.*)(@[^ \b]+)', re.MULTILINE)
+        result = re.sub(pattern, "\\1********\\3", url)
+        return result
 
     def line_count(filename):
         count = 0
@@ -118,14 +137,17 @@ class TestEvents(CliEAATest):
         """
         delay = 15
         url = os.getenv('URL_TEST_TRAFFIC')
-        print(f"Test fingerprint: {id(cls):x}")
         if url:
+            print(f"Test fingerprint: {id(cls):x}")
+            print("Generating some traffic against base URL_TEST_TRAFFIC={urle}...".format(urle=CliEAATest.url_safe_print(url)))
             for i in range(0, 10):
-                resp = requests.get(url + f"/?__unittest={id(cls):x}")
-                print(f"{i}:", url, resp)
+                resp = requests.get(url, params={'__unittest_fp': f"{id(cls):x}", '__unittest_seq': i})
+                print(f"{i}:", CliEAATest.url_safe_print(resp.url), resp)
                 # time.sleep(0.3)
             print(f"Now waiting {delay}s to get the log collected")
             time.sleep(delay)
+        else:
+            print("WARNING: no environment variable URL_TEST_TRAFFIC defined, we assume the traffic is generated separately")
 
     def test_useraccess_log_raw(self):
         """
@@ -174,6 +196,7 @@ class TestEvents(CliEAATest):
         cmd = self.cli_run("log", "access", "--start", self.after, "--end", self.before, "--json")
         stdout, stderr = cmd.communicate(timeout=60)
         events = stdout.decode(encoding)
+        print(events)
         event_count = len(events.splitlines())
         self.assertGreater(event_count, 0, "We expect at least one user access event")
         self.assertEqual(cmd.returncode, 0, 'return code must be 0')
@@ -233,6 +256,26 @@ class TestConnectors(CliEAATest):
         Command line: akamai eaa c --json
         """
         cmd = self.cli_run('c', 'list', '--json')
+        stdout, stderr = cmd.communicate()
+        output = stdout.decode(encoding)
+        con_count = len(output.splitlines())
+        self.assert_list_connectors(con_count, cmd)
+
+    def test_connector_health_raw(self):
+        """
+        Run connector command to fetch full health statuses.
+        """
+        cmd = self.cli_run('c', 'list', '--perf')
+        stdout, stderr = cmd.communicate()
+        output = stdout.decode(encoding)
+        con_count = len(output.splitlines())
+        self.assert_list_connectors(con_count, cmd)
+
+    def test_connector_health_json(self):
+        """
+        Run connector command to fetch full health statuses (JSON version).
+        """
+        cmd = self.cli_run('c', 'list', '--json', '--perf')
         stdout, stderr = cmd.communicate()
         output = stdout.decode(encoding)
         con_count = len(output.splitlines())

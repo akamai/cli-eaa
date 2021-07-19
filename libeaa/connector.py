@@ -65,9 +65,12 @@ class ConnectorAPI(BaseAPI):
         systemres_api_url = 'mgmt-pop/agents/{agentid}/system_resource/metrics'.format(agentid=connector_id)
         perf_data_resp = self.get(systemres_api_url, params={'period': '1h'})
         perf_data = perf_data_resp.json()
+        print(json.dumps(perf_data, indent=2))
         perf_latest = {
-            'timestamp': None, 'mem_pct': None, 'disk_pct': None, 'cpu_pct': None,
-            'network_traffic_mbps': None, 'dialout_total': None, "dialout_idle": None
+            'timestamp': None, 
+            'mem_pct': None, 'disk_pct': None, 'cpu_pct': None,
+            'network_traffic_mbps': None, 
+            'dialout_total': None, 'dialout_idle': None, 'active_dialout_count': None
         }
         if len(perf_data.get('data', [])) >= 1:
             perf_latest = perf_data.get('data', [])[-1]
@@ -141,7 +144,7 @@ class ConnectorAPI(BaseAPI):
                     "network": perf_latest.get('network_traffic_mbps') or ConnectorAPI.NODATA_JSON,
                     "dialout_total": perf_latest.get('dialout_total') or ConnectorAPI.NODATA_JSON,
                     "dialout_idle": perf_latest.get('dialout_idle') or ConnectorAPI.NODATA_JSON,
-                    "dialout_active": perf_latest.get('dialout_active') or ConnectorAPI.NODATA_JSON
+                    "dialout_active": perf_latest.get('active_dialout_count') or ConnectorAPI.NODATA_JSON
                 })
             if not json_fmt:
                 cli.print(format_line.format(
@@ -161,7 +164,7 @@ class ConnectorAPI(BaseAPI):
                     network=perf_latest.get('network_traffic_mbps') or ConnectorAPI.NODATA,
                     dialout_total=perf_latest.get('dialout_total') or ConnectorAPI.NODATA,
                     dialout_idle=perf_latest.get('dialout_idle') or ConnectorAPI.NODATA,
-                    dialout_active=perf_latest.get('dialout_active') or ConnectorAPI.NODATA
+                    dialout_active=perf_latest.get('active_dialout_count') or ConnectorAPI.NODATA
                 ))
             else:
                 cli.print(json.dumps(data))
