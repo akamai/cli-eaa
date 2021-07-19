@@ -65,7 +65,6 @@ class ConnectorAPI(BaseAPI):
         systemres_api_url = 'mgmt-pop/agents/{agentid}/system_resource/metrics'.format(agentid=connector_id)
         perf_data_resp = self.get(systemres_api_url, params={'period': '1h'})
         perf_data = perf_data_resp.json()
-        print(json.dumps(perf_data, indent=2))
         perf_latest = {
             'timestamp': None, 
             'mem_pct': None, 'disk_pct': None, 'cpu_pct': None,
