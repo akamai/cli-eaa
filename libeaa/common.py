@@ -35,7 +35,7 @@ from akamai.edgegrid import EdgeGridAuth, EdgeRc
 config = EdgeGridConfig({'verbose': False}, 'default')
 
 #: cli-eaa version
-__version__ = '0.4.1'
+__version__ = '0.4.2'
 
 #: HTTP Request Timeout in seconds
 HTTP_REQ_TIMEOUT = 300
@@ -227,7 +227,7 @@ class BaseAPI(object):
         Send a GET reques to the API.
         """
         url = urljoin(self._baseurl, url_path)
-        response = self._session.get(url, params=self.build_params(params), timeout=HTTP_REQ_TIMEOUT)
+        response = self._session.get(url, params=self.build_params(params), timeout=HTTP_REQ_TIMEOUT)   
         logging.info("BaseAPI: GET response is HTTP %s" % response.status_code)
         if response.status_code != requests.status_codes.codes.ok:
             logging.info("BaseAPI: GET response body: %s" % response.text)

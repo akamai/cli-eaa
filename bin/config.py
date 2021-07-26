@@ -21,6 +21,8 @@ import argparse
 
 from configparser import ConfigParser
 
+import _paths
+from error import rc_error, cli_exit_with_error
 
 class EdgeGridConfig():
 
@@ -140,6 +142,7 @@ class EdgeGridConfig():
         list_parser.add_argument('--perf', default=False, action="store_true", help='Show performance metrics')
         list_parser.add_argument('--json', '-j', default=False, action="store_true", help='View as JSON')
         list_parser.add_argument('--tail', '-f', default=False, action="store_true", help='Keep watching, do not exit until Control+C/SIGTERM')
+        list_parser.add_argument('--interval', '-i', default=300, type=float, help='Interval between update (works with --tail only)')
         # subparsers.required = False
         swap_parser = subsub.add_parser("swap", help="Swap connector with another one")
         swap_parser.add_argument(dest="new_connector_id", help='New connector ID')
@@ -179,7 +182,7 @@ class EdgeGridConfig():
         try:
             args = parser.parse_args()
         except Exception:
-            sys.exit(1)
+            cli_exit_with_error(rc_error.GENERAL_ERROR)
 
         arguments = vars(args)
 
@@ -194,9 +197,8 @@ class EdgeGridConfig():
             if not config.has_section(configuration):
                 err_msg = "ERROR: No section named %s was found in your %s file\n" % \
                           (configuration, arguments["edgerc"])
-                err_msg += "ERROR: Please generate credentials for the script functionality\n"
-                err_msg += "ERROR: and run 'python gen_edgerc.py %s' to generate the credential file\n" % configuration
-                sys.exit(err_msg)
+                cli_exit_with_error(rc_error.EDGERC_SECTION_NOT_FOUND, err_msg)
+
             for key, value in config.items(configuration):
                 # ConfigParser lowercases magically
                 if key not in arguments or arguments[key] is None:
@@ -206,6 +208,9 @@ class EdgeGridConfig():
                     print("Run python gen_edgerc.py to get your credentials file set up "
                           "once you've provisioned credentials in Akamai Control Center.")
                     return None
+        else:
+            err_msg = f"ERROR: EdgeRc configuration {arguments['edgerc']} not found.\n"
+            cli_exit_with_error(rc_error.EDGERC_MISSING.value, err_msg)
 
         for option in arguments:
             setattr(self, option, arguments[option])

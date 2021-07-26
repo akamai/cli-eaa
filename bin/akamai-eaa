@@ -27,6 +27,7 @@ import time
 import platform
 import logging
 import fnmatch
+import signal
 import http.client as http_client
 from json import dumps
 
@@ -149,6 +150,8 @@ if __name__ == "__main__":
     setup_logging()
     logging.debug("Python %s" % platform.python_version())
 
+    signal.signal(signal.SIGTERM, cli.exit_gracefully)
+
     try:
         if config.command == "version":
             print(__version__)
@@ -194,7 +197,8 @@ if __name__ == "__main__":
                 # the ArgumentParser won't have the attribute set
                 json = hasattr(config, 'json') and config.json
                 tail = hasattr(config, 'tail') and config.tail
-                c.list(perf, json, tail)
+                interval = hasattr(config, 'interval') and config.interval
+                c.list(perf, json, tail, interval, cli.stop_event)
         elif config.command in ("certificate", "cert"):
             c = CertificateAPI(config)
             if config.action is None or config.action == "list" or config.certificate_id is None:

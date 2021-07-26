@@ -62,18 +62,21 @@ class ConnectorAPI(BaseAPI):
         Returns:
             [tuple]: (connector_id, dictionnary with metric name as key)
         """
-        systemres_api_url = 'mgmt-pop/agents/{agentid}/system_resource/metrics'.format(agentid=connector_id)
-        perf_data_resp = self.get(systemres_api_url, params={'period': '1h'})
-        perf_data = perf_data_resp.json()
-        perf_latest = {
-            'timestamp': None, 
-            'mem_pct': None, 'disk_pct': None, 'cpu_pct': None,
-            'network_traffic_mbps': None, 
-            'dialout_total': None, 'dialout_idle': None, 'active_dialout_count': None
-        }
-        if len(perf_data.get('data', [])) >= 1:
-            perf_latest = perf_data.get('data', [])[-1]
-        return (connector_id, perf_latest)
+        try:  # This method is executed as separate thread, we need the able to troubleshoot
+            systemres_api_url = 'mgmt-pop/agents/{agentid}/system_resource/metrics'.format(agentid=connector_id)
+            perf_data_resp = self.get(systemres_api_url, params={'period': '1h'})
+            perf_data = perf_data_resp.json()
+            perf_latest = {
+                'timestamp': None, 
+                'mem_pct': None, 'disk_pct': None, 'cpu_pct': None,
+                'network_traffic_mbps': None, 
+                'dialout_total': None, 'dialout_idle': None, 'active_dialout_count': None
+            }
+            if len(perf_data.get('data', [])) >= 1:
+                perf_latest = perf_data.get('data', [])[-1]
+            return (connector_id, perf_latest)
+        except:
+            logging.exception("Error during fetching connector performance health.")
 
     def perf_apps(self, connector_id):
         """
@@ -170,29 +173,37 @@ class ConnectorAPI(BaseAPI):
         if not json_fmt:
             cli.footer("Total %s connector(s)" % total_con)
 
-    def list(self, perf, json_fmt, follow=False, stopEvent=None):
+    def list(self, perf, json_fmt, follow=False, interval=300, stop_event=None):
         """
         List the connector and their attributes and status
         The default output is CSV
 
         Args:
-            perf (bool): Add performance data (cpu, mem, disk, dialout)
-            json_fmt (bool): Output as JSON instead of CSV
-            follow (bool): Never stop until Control+C or SIGTERM is received
+            perf (bool):        Add performance data (cpu, mem, disk, dialout)
+            json_fmt (bool):    Output as JSON instead of CSV
+            follow (bool):      Never stop until Control+C or SIGTERM is received
+            interval (float):   Interval in seconds between pulling the API, default is 5 minutes (300s)
+            stop_event (Event): Main program stop event allowing the function
+                                to stop at the earliest possible
         """
-        interval_sec = 5 * 60  # Interval in seconds between pulling the API, default is 5 minutes
-        while True or (stopEvent and not stopEvent.is_set()):
-            start = time.time()
-            self.list_once(perf, json_fmt)
-            if follow:
-                sleep_time = interval_sec - (time.time() - start)
-                if sleep_time > 0:
-                    time.sleep(sleep_time)
+        while True or (stop_event and not stop_event.is_set()):
+            try:
+                start = time.time()
+                self.list_once(perf, json_fmt)
+                if follow:
+                    sleep_time = interval - (time.time() - start)
+                    if sleep_time > 0:
+                        time.sleep(sleep_time)
+                    else:
+                        logging.error(f"The EAA Connector API is slow to respond (could be also a proxy in the middle), holding for {interval} sec.")
+                        time.sleep(interval)
                 else:
-                    logging.error(f"The EAA Connector API is slow to respond (could be also a proxy in the middle), holding for {interval_sec} sec.")
-                    time.sleep(interval_sec)
-            else:
-                break
+                    break
+            except Exception as e:
+                if follow:
+                    logging.error(f"General exception {e}, since we are in follow mode (--tail), we keep going.")
+                else:
+                    raise
 
     def findappbyconnector(self, connector_moniker):
         """
