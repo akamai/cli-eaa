@@ -42,7 +42,9 @@ class EdgeGridConfig():
         event_parser.add_argument('--output', '-o', help="Output file, default is stdout. Encoding is utf-8.")
         event_parser.add_argument('--json', '-j', action="store_true", default=False,
                                   help="Output as JSON instead of raw line")
-        event_parser.add_argument('--v2', '-2', dest="log_version", action="store_const", const=2, default=1, 
+        event_parser.add_argument('--v1', '-1', dest="log_version", action="store_const", const=1, default=2, 
+                                  help="Use API version 1 for access logs.")
+        event_parser.add_argument('--v2', '-2', dest="log_version", action="store_const", const=2, default=2, 
                                   help="Use API version 2 for access logs.")
         event_parser.add_argument('--tail', '-f', action='store_true', default=False,
                                   help="""Do not stop when most recent log is reached,

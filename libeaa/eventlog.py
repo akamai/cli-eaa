@@ -25,6 +25,7 @@ import re
 
 # 3rd party modules
 import requests
+from requests.exceptions import RetryError
 import six
 
 # cli-eaa modules
@@ -32,6 +33,7 @@ import common
 from common import config, cli, isfloat
 
 SOURCE = 'akamai-cli/eaa'
+POST_RETRY_MAX = 5
 
 
 class EventLogAPI(common.BaseAPI):
@@ -91,17 +93,30 @@ class EventLogAPI(common.BaseAPI):
             else:
                 raise Exception(f"Unknown access log version {logversion}")
 
-    def get_logs(self, drpc_args, logtype=EventType.USER_ACCESS, logversion=1, output=None):
+    def get_logs(self, drpc_args, logtype=EventType.USER_ACCESS, logversion=2, output=None):
         """
         Fetch the logs, by default the user access logs.
         """
         if not isinstance(logtype, self.EventType):
             raise ValueError("Unsupported log type %s" % logtype)
-
+        retry = POST_RETRY_MAX
         scroll_id = None
         try:
             # Fetches the logs for given drpc args
-            resp = self.post(self.get_api_url(logtype, logversion), json=drpc_args)
+            # 2021-09-08: Introduce a special retry mechanism for these API log endpoints
+            #             only if there is a ConnectionError. Some data loss may occur as
+            #             the remote server expect to deliver using a scrolling mechanism
+            while retry > 0:
+                try:
+                    retry -= 1
+                    resp = self.post(self.get_api_url(logtype, logversion), json=drpc_args)
+                    break
+                except requests.exceptions.ConnectionError as ce:
+                    logging.warn(f"ConnectionError, retry left: {retry}")
+                    time.sleep(1)
+                    if retry == 0:
+                        raise RetryError(f"Give up fetching log after {POST_RETRY_MAX} retries.")
+
             if resp.status_code != requests.codes.ok:
                 logging.error("Invalid API response status code: %s" % resp.status_code)
                 return None
@@ -110,15 +125,9 @@ class EventLogAPI(common.BaseAPI):
             logging.debug("JSON> %s" % json.dumps(resj, indent=2))
 
             if 'message' in resj:
-                # Get msg and scroll_id based on the type of logs
-                # Since it is two different API in the back-end
                 if logtype == self.EventType.USER_ACCESS:
-                    if logversion == 1:
-                        msg = resj.get('message')[0][1]
-                        scroll_id = msg.get('scroll_id')
-                    elif logversion == 2:
-                        msg = resj.get('message')[0][0]
-                        scroll_id = msg.get('scroll_id')
+                    msg = resj.get('message')[0][1]
+                    scroll_id = msg.get('scroll_id')
                 elif logtype == self.EventType.ADMIN:
                     msg = resj.get('message')
                     if 'scroll_id' in msg.get('metadata'):
@@ -130,7 +139,7 @@ class EventLogAPI(common.BaseAPI):
                 count = 0
 
                 if logtype == self.EventType.USER_ACCESS:
-                    # V1 will be relavant till around EAA 2021.03 release
+                    # V1 will be relevant till around EAA 2021.03 release
                     if logversion == 1:
                         for timestamp, response in six.iteritems(msg):
                             try:
@@ -158,7 +167,7 @@ class EventLogAPI(common.BaseAPI):
                                 logging.exception("Error parsing access log line")
                     # V2 will be available starting 2021.02, will return 404 before
                     elif logversion == 2:
-                        logging.info(json.dumps(msg, indent=2))
+                        logging.debug(json.dumps(msg, indent=2))
                         for e in resj.get('message', [])[0][1].get('data', []):
                             local_time = datetime.datetime.fromtimestamp(e.get('ts')/1000)
                             line = "%s\n" % ' '.join([local_time.isoformat(), e.get('flog')])
@@ -169,7 +178,7 @@ class EventLogAPI(common.BaseAPI):
                                 output.write("%s\n" % json.dumps(EventLogAPI.userlog_prepjson(result.groupdict())))
                             else:
                                 output.write(line)
-                            logging.debug(f"### flog v2 ## {e}")
+                            logging.debug(f"### flog v2 [{self.line_count}] ## {e}")
                             self.line_count += 1
                             count += 1
                 elif logtype == self.EventType.ADMIN:
@@ -267,7 +276,7 @@ class EventLogAPI(common.BaseAPI):
                         'es_fields': 'flog',
                         'limit': '1000',
                         'sub_metrics': 'scroll',
-                        'source': SOURCE,
+                        'source': SOURCE
                     }
                     if scroll_id is not None:
                         drpc_args.update({'scroll_id': str(scroll_id)})
