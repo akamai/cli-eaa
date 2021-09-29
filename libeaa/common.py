@@ -51,20 +51,24 @@ class cli:
     @staticmethod
     def print(s):
         sys.stdout.write("%s\n" % s)
+        sys.stdout.flush()
 
     @staticmethod
     def print_error(s):
         sys.stderr.write("%s\n" % s)
+        sys.stderr.flush()
 
     @staticmethod
     def header(s):
         if not config.batch:
             sys.stdout.write("%s\n" % s)
+            sys.stdout.flush()
 
     @staticmethod
     def footer(s):
         if not config.batch:
             sys.stderr.write("%s\n" % s)
+            sys.stderr.flush()
 
     @staticmethod
     def log_level():
