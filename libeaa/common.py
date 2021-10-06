@@ -29,6 +29,8 @@ import six
 import requests
 from config import EdgeGridConfig
 from akamai.edgegrid import EdgeGridAuth, EdgeRc
+import inspect
+
 
 # If all parameters are set already, use them.  Otherwise
 # use the config
@@ -86,7 +88,12 @@ class cli:
 
     @staticmethod
     def exit_gracefully(signum, frame):
-        logging.info("Stop due to SIGTERM or SIGINT signal received")
+        logging.info(f"Stop due to SIGTERM(15) or SIGINT(2) signal received: {signum} ")
+        # [MS] - was only needed for debugging - leaving it here for some more minutes
+        #curframe = inspect.currentframe()
+        #calframe = inspect.getouterframes(curframe, 2)
+        #print(f"CALLER: {calframe}")
+        # /[MS] - was only needed for debugging - leaving it here for some more minutes
         cli.stop_event.set()
 
 

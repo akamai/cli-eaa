@@ -192,11 +192,16 @@ class ConnectorAPI(BaseAPI):
                 self.list_once(perf, json_fmt)
                 if follow:
                     sleep_time = interval - (time.time() - start)
+
                     if sleep_time > 0:
-                        time.sleep(sleep_time)
+                        # [MS] switching to event sleep (mirroring behavior on regular log output)
+                        #time.sleep(sleep_time)
+                        stop_event.wait(sleep_time)
                     else:
                         logging.error(f"The EAA Connector API is slow to respond (could be also a proxy in the middle), holding for {interval} sec.")
-                        time.sleep(interval)
+                        # [MS] switching to event sleep (mirroring behavior on regular log output)
+                        #time.sleep(interval)
+                        stop_event.wait(sleep_time)
                 else:
                     break
             except Exception as e:
