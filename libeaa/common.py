@@ -89,17 +89,7 @@ class cli:
     @staticmethod
     def exit_gracefully(signum, frame):
         logging.info(f"Stop due to SIGTERM(15) or SIGINT(2) signal received: {signum} ")
-        # [MS] - was only needed for debugging - leaving it here for some more minutes
-        #curframe = inspect.currentframe()
-        #calframe = inspect.getouterframes(curframe, 2)
-        #print(f"CALLER: {calframe}")
-        # /[MS] - was only needed for debugging - leaving it here for some more minutes
         cli.stop_event.set()
-
-    @staticmethod
-    def proc_noop(signum, frame):
-        logging.info(f"Stop due to SIGTERM(15) or SIGINT(2) signal received {signum} but not doing anyhting (NOOP)")
-
 
 class EAALegacyAuth(requests.auth.AuthBase):
     """

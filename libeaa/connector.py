@@ -113,7 +113,7 @@ class ConnectorAPI(BaseAPI):
 
         if perf:  # Add performance metrics in the report
             perf_res_list = None
-            signal.signal(signal.SIGTERM, cli.proc_noop)
+            signal.signal(signal.SIGTERM, signal.SIG_DFL)
             with Pool(ConnectorAPI.POOL_SIZE) as p:
                 perf_res_list = p.map(self.perf_system, [c.get('uuid_url') for c in connectors.get('objects', [])])
             perf_res = dict(perf_res_list)
