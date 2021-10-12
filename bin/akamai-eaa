@@ -150,8 +150,7 @@ if __name__ == "__main__":
     setup_logging()
     logging.debug("Python %s" % platform.python_version())
 
-    # [MS] temporary disabled signal handling as it crashed with MP
-    #signal.signal(signal.SIGTERM, cli.exit_gracefully)
+    signal.signal(signal.SIGTERM, cli.exit_gracefully)
 
     try:
         if config.command == "version":
