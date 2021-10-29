@@ -65,8 +65,18 @@ class EventLogAPI(common.BaseAPI):
             self._output = sys.stdout
         self.line_count = 0
         self.error_count = 0
-        # Pre-compile the dictionary output
-        self.userlog_pattern = r'^([^\s]*)\s(?P<username>[^\s]*)\s(?P<apphost>[\w\.\-]+)\s(?P<http_method>[A-Z]+)-(?P<url_path>.*)\-(?P<http_ver>HTTP/[0-9\.]*)\s(?P<referer>[^\s]*)\s(?P<status_code>[0-9]*)\s(?P<idpinfo>[^\s]*)\s(?P<clientip>[^\s]*)\s(?P<http_verb2>[^\s]*)\s(?P<total_resp_time>[^\s]*)\s(?P<connector_resp_time>[^\s]*)\s(?P<datetime>[^\s]*)\s(?P<origin_resp_time>[^\s]*)\s(?P<origin_host>[^\s]*)\s(?P<req_size>[^\s]*)\s(?P<content_type>[^\s]*)\s(?P<user_agent>[^\s]*)\s(?P<device_os>[^\s]*)\s(?P<device_type>[^\s]*)\s(?P<geo_city>[^\s]*)\s(?P<geo_state>[^\s]*)\s(?P<geo_statecode>[^\s]*)\s(?P<geo_countrycode>[^\s]*)\s(?P<geo_country>[^\s]*)\s(?P<internal_host>[^\s]*)\s(?P<session_info>[^\s]*)\s(?P<groups>[^\s]*)\s(?P<session_id>.*)[\s.*|]'
+        # Pre-compile the EAA user access log extractions regexp dictionary output
+        # This updates version is backward compatible pre-2021.03 and 2021.03
+        self.userlog_pattern = (r'^([^\s]*)\s(?P<username>[^\s]*)\s(?P<apphost>[\w\.\-]+)\s(?P<http_method>[A-Z]+)-'
+                                r'(?P<url_path>.*)\-(?P<http_ver>HTTP/[0-9\.]*)\s(?P<referer>[^\s]*)\s(?P<status_code>[0-9]*)\s'
+                                r'(?P<idpinfo>[^\s]*)\s(?P<clientip>[^\s]*)\s(?P<http_verb2>[^\s]*)\s(?P<total_resp_time>[^\s]*)\s'
+                                r'(?P<connector_resp_time>[^\s]*)\s(?P<datetime>[^\s]*)\s(?P<origin_resp_time>[^\s]*)\s'
+                                r'(?P<origin_host>[^\s]*)\s(?P<req_size>[^\s]*)\s(?P<content_type>[^\s]*)\s(?P<user_agent>[^\s]*)\s'
+                                r'(?P<device_os>[^\s]*)\s(?P<device_type>[^\s]*)\s(?P<geo_city>[^\s]*)\s(?P<geo_state>[^\s]*)\s'
+                                r'(?P<geo_statecode>[^\s]*)\s(?P<geo_countrycode>[^\s]*)\s(?P<geo_country>[^\s]*)\s'
+                                r'(?P<internal_host>[^\s]*)\s(?P<session_info>[^\s]*)\s(?P<groups>[^\s]*)\s'
+                                r'(?P<session_id>[^\s|$]*)(\s(?P<client_id>[^\s]*)\s(?P<reason>[^\s]*)\s(?P<bytes_out>[^\s]*)\s(?P<bytes_in>[^\s]*)\s'
+                                r'((?P<connector_ip>[^\:]*)\:(?P<connector_srcport>.*)|\-)|)[\s.*|]')
         self._userlog_regexp = re.compile(self.userlog_pattern)
 
     def userlog_prepjson(d):

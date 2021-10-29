@@ -64,13 +64,11 @@ from libeaa.error import rc_error
 # 3rd party modules
 import requests
 
-
 # Global variables
 encoding = 'utf-8'
 
 def pytest_html_report_title(report):
     report.title = "Akamai cli-eaa"
-
 
 class CliEAATest(unittest.TestCase):
     testdir = None
@@ -89,11 +87,11 @@ class CliEAATest(unittest.TestCase):
         # Core CLI arguments goes first
         if '--section' not in args and section:
             command.append('--section')
-            command.append(section)            
+            command.append(section)
         edgerc = CliEAATest.config_edgerc()
         if '--edgerc' not in args and section:
             command.append('--edgerc')
-            command.append(edgerc)            
+            command.append(edgerc)
         # Then CLI-EAA arguments
         command.extend(*args)
         CliEAATest.cli_print("\nSHELL COMMAND: ", shlex.join(command))
@@ -139,14 +137,16 @@ class CliEAATest(unittest.TestCase):
 
 class TestEvents(CliEAATest):
 
-    after = int(time.time() - 15 * 60)
+    after = int(time.time() - 15 * 60) # 15 minutes by default
     before = int(time.time())
 
     @classmethod
     def setUpClass(cls):
-        cls.after = int(time.time())
-        cls.config_testapp_url()
-        cls.before = int(time.time())
+        url = os.getenv('URL_TEST_TRAFFIC')
+        if url:
+            cls.after = int(time.time())
+            cls.config_testapp_url()
+            cls.before = int(time.time())
 
     @classmethod
     def config_testapp_url(cls):
