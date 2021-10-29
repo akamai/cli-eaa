@@ -75,7 +75,7 @@ class EventLogAPI(common.BaseAPI):
                                 r'(?P<device_os>[^\s]*)\s(?P<device_type>[^\s]*)\s(?P<geo_city>[^\s]*)\s(?P<geo_state>[^\s]*)\s'
                                 r'(?P<geo_statecode>[^\s]*)\s(?P<geo_countrycode>[^\s]*)\s(?P<geo_country>[^\s]*)\s'
                                 r'(?P<internal_host>[^\s]*)\s(?P<session_info>[^\s]*)\s(?P<groups>[^\s]*)\s'
-                                r'(?P<session_id>[^\s|$]*)(\s(?P<client_id>[^\s]*)\s(?P<reason>[^\s]*)\s(?P<bytes_out>[^\s]*)\s(?P<bytes_in>[^\s]*)\s'
+                                r'(?P<session_id>[^\s|$]*)(\s(?P<client_id>[^\s]*)\s(?P<deny_reason>[^\s]*)\s(?P<bytes_out>[^\s]*)\s(?P<bytes_in>[^\s]*)\s'
                                 r'((?P<connector_ip>[^\:]*)\:(?P<connector_srcport>.*)|\-)|)[\s.*|]')
         self._userlog_regexp = re.compile(self.userlog_pattern)
 
