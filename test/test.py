@@ -147,6 +147,11 @@ class TestEvents(CliEAATest):
             cls.after = int(time.time())
             cls.config_testapp_url()
             cls.before = int(time.time())
+        else:
+            span = os.getenv('URL_SCAN_SPAN')
+            if span:
+                cls.after = int(time.time() - int(span))
+                cls.before = int(time.time())
 
     @classmethod
     def config_testapp_url(cls):
@@ -165,7 +170,9 @@ class TestEvents(CliEAATest):
             CliEAATest.cli_print(f"Now waiting {delay}s to get the log collected")
             time.sleep(delay)
         else:
-            CliEAATest.cli_print("WARNING: no environment variable URL_TEST_TRAFFIC defined, we assume the traffic is generated separately")
+            CliEAATest.cli_print("WARNING: no environment variable URL_TEST_TRAFFIC defined, we assume "
+                                 "the traffic is generated separately. You may use URL_SCAN_SPAN to "
+                                 "configure how far back we need to scan in the past.")
 
     def test_useraccess_log_raw(self):
         """
@@ -325,7 +332,6 @@ class TestIdentity(CliEAATest):
         dir_count = len(output.splitlines())
         self.assertGreater(dir_count, 0, "We expect at least one directory (cloud directory) to be configured")
         self.assertEqual(cmd.returncode, 0, 'return code must be 0')
-
 
 
 class TestCliEAA(CliEAATest):
