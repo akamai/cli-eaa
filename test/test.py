@@ -158,7 +158,7 @@ class TestEvents(CliEAATest):
         """
         Generate some traffic against a webapp defined
         """
-        delay = 15
+        delay = 30
         url = os.getenv('URL_TEST_TRAFFIC')
         if url:
             CliEAATest.cli_print(f"Test fingerprint: {id(cls):x}")

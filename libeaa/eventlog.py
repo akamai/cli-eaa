@@ -80,16 +80,18 @@ class EventLogAPI(common.BaseAPI):
         self._userlog_regexp = re.compile(self.userlog_pattern)
 
     def userlog_prepjson(d):
-        if str.isdigit(d.get('req_size')):
-            d['req_size'] = int(d['req_size'])
-        if str.isdigit(d.get('status_code')):
-            d['status_code'] = int(d['status_code'])
-        if isfloat(d.get('total_resp_time')):
-            d['total_resp_time'] = float(d['total_resp_time'])
-        if isfloat(d.get('connector_resp_time')):
-            d['connector_resp_time'] = float(d['connector_resp_time'])
-        if isfloat(d.get('origin_resp_time')):
-            d['origin_resp_time'] = float(d['origin_resp_time'])
+        """
+        By default all fields are extracted as string even if they are integer or float.
+        This straights up the type to optimize the JSON ouput.
+        """
+        int_fields = ['req_size', 'status_code', 'bytes_out', 'bytes_in', 'con_srcport']
+        float_fields = ['total_resp_time', 'connector_resp_time', 'origin_resp_time']
+        for int_candidate in int_fields:
+            if d.get(int_candidate) and str.isdigit(d.get(int_candidate)):
+                d[int_candidate] = int(d[int_candidate])
+        for float_candidate in float_fields:
+            if d.get(float_candidate) and str.isdigit(d.get(float_candidate)):
+                d[float_candidate] = int(d[float_candidate])
         return d
 
     def get_api_url(self, logtype, logversion):
