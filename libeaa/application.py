@@ -244,6 +244,7 @@ class ApplicationAPI(BaseAPI):
         """
         t = Template(raw_config)
         t.globals['AppProfile'] = ApplicationAPI.Profile
+        t.globals['AppType'] = ApplicationAPI.Type
         t.globals['AppDomainType'] = ApplicationAPI.Domain
         t.globals['cli_cloudzone'] = self.cloudzone_lookup
         t.globals['cli_certificate'] = self.certificate_lookup

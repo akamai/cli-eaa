@@ -237,11 +237,11 @@ class EventLogAPI(common.BaseAPI):
     def date_boundaries():
         # end time in milliseconds, now minus collection delay
         ets = int(time.mktime(time.localtime()) * 1000 - (EventLogAPI.COLLECTION_DELAY_MINUTES * 60 * 1000))
-        if not config.tail and config.end:
+        if config.end:
             ets = config.end * 1000
         # start time in milliseconds: end time minus poll interval
         sts = int(ets - (EventLogAPI.PULL_INTERVAL_SEC * 1000))
-        if not config.tail and config.start:
+        if config.start:
             sts = config.start * 1000
         return ets, sts
 
@@ -296,7 +296,7 @@ class EventLogAPI(common.BaseAPI):
                     out.flush()
                     if scroll_id is None:
                         break
-                if not config.tail:
+                if (not config.tail) or (config.start and config.end):
                     if not config.batch and out.seekable():
                         total_bytes = out.tell() - start_position
                         cli.print("# Start: %s (EPOCH %d)" %

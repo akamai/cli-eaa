@@ -67,8 +67,11 @@ See [install.md](docs/install.md)
 EAA has two types of logs, the user access logs and the administrators audit logs.
 For detailed description about each field, please refer to the product documentation on [https://learn.akamai.com](https://learn.akamai.com/en-us/webhelp/enterprise-application-access/eaa-logs-from-eaa-api-and-splunk/GUID-07D6B02C-1EDE-4D16-A19D-687449B4A748.html).
 
-You can pull log either in near realtime, using `-f`, or retrieve a period of time passing EPOCH timestamp in `--start` and `--end`
-You cannot combine `-f` and explicit date range.
+You can pull EAA events either:
+- in near realtime using the argument `-f` or `--tail`
+- or retrieve a period of time passing EPOCH timestamp in `--start` and `--end`
+
+If you set `-f` and date range, the `-f` option will be ignored.
 
 Pull user access logs, block till new logs are received.
 You can stop by pressing Control+C (Control+Break) or sending a signal SIG_INT or SIG_TERM to the process
@@ -82,6 +85,12 @@ You may want a one time chunk of log for a period of time, let's say the last 6 
 ```bash
 $ START=$(bc <<< "$(date +%s) - 6 * 60 * 60")
 $ akamai eaa log access -s $START
+```
+
+On Windows platforms, you may use PowerShell
+```powershell
+PS /home/cli-eaa> $START = (Get-Date -UFormat %s) - 6 * 60 * 60
+PS /home/cli-eaa> akamai eaa log access -s $START
 ```
 
 Send the **user access events** to a file (utf-8 encoding is being used):
