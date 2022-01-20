@@ -286,7 +286,7 @@ class EventLogAPI(common.BaseAPI):
                         'ets': str(ets),
                         'metrics': 'logs',
                         'es_fields': 'flog',
-                        'limit': '1000',
+                        'limit': config.limit,
                         'sub_metrics': 'scroll',
                         'source': SOURCE
                     }
@@ -305,6 +305,7 @@ class EventLogAPI(common.BaseAPI):
                                   (time.strftime('%m/%d/%Y %H:%M:%S UTC', time.gmtime(ets/1000.)), ets/1000.))
                         cli.print("# Total: %s event(s), %s error(s), %s bytes written" %
                                   (self.line_count, self.error_count, total_bytes))
+                        cli.print("Total time taken %s seconds" % (time.time() - s))
                     break
                 else:
                     elapsed = time.time() - s
