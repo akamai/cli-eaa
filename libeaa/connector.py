@@ -236,7 +236,6 @@ class ConnectorAPI(BaseAPI):
         """
         url_params = {'limit': ApplicationAPI.LIMIT_SOFT, 'expand': 'true'}
         search_app = self.get('mgmt-pop/apps', params=url_params)
-        print(search_app.json())
         return search_app.json()
 
 
