@@ -17,6 +17,8 @@ from multiprocessing import Pool
 import time
 import json
 import signal
+from functools import lru_cache
+
 
 from common import cli, BaseAPI, EAAItem
 from application import ApplicationAPI
@@ -28,6 +30,7 @@ class ConnectorAPI(BaseAPI):
     """
     POOL_SIZE = 6        # When doing sub request, max concurrency of underlying HTTP request
     LIMIT_SOFT = 256     # Soft limit of maximum of connectors to retreive at once
+    APP_CACHE_TTL = 300  # How long we consider the app <-> connector mapping accurate enough
     NODATA = "-"         # Output value in the CSV cell if data is not available
     NODATA_JSON = None   # Output value in the CSV cell if data is not available
 
@@ -96,7 +99,7 @@ class ConnectorAPI(BaseAPI):
                     perf_by_host[perf_by_app.get('app_name')] = perf_by_app.get('histogram_data')[-1]
         return perf_by_host
 
-    def list_once(self, perf=False, json_fmt=False):
+    def list_once(self, perf=False, json_fmt=False, show_apps=False):
         """
         Display the list of EAA connectors as comma separated CSV or JSON
         TODO: refactor this method, too long
@@ -110,8 +113,7 @@ class ConnectorAPI(BaseAPI):
         if perf:
             header += ",last_upd,CPU%,Mem%,Disk%,NetworkMbps,do_total,do_idle,do_active"
             format_line += ",{ts},{cpu},{mem},{disk},{network},{dialout_total},{dialout_idle},{dialout_active}"
-
-        if perf:  # Add performance metrics in the report
+            # Add performance metrics in the report
             perf_res_list = None
             signal.signal(signal.SIGTERM, signal.SIG_DFL)
             with Pool(ConnectorAPI.POOL_SIZE) as p:
@@ -151,6 +153,12 @@ class ConnectorAPI(BaseAPI):
                     "dialout_idle": perf_latest.get('dialout_idle') or ConnectorAPI.NODATA_JSON,
                     "dialout_active": perf_latest.get('active_dialout_count') or ConnectorAPI.NODATA_JSON
                 })
+            # Help SIEM with the mapping connector <-> apps
+            if show_apps:
+                apps = []
+                for a in self.findappbyconnector(EAAItem("con://" + c.get('uuid_url'))):
+                    apps.append(str(a[2]))
+                data.update({"apps": apps})
             if not json_fmt:
                 cli.print(format_line.format(
                     scheme=EAAItem.Type.Connector.scheme,
@@ -176,7 +184,7 @@ class ConnectorAPI(BaseAPI):
         if not json_fmt:
             cli.footer("Total %s connector(s)" % total_con)
 
-    def list(self, perf, json_fmt, follow=False, interval=300, stop_event=None):
+    def list(self, perf, json_fmt, show_apps=False, follow=False, interval=300, stop_event=None):
         """
         List the connector and their attributes and status
         The default output is CSV
@@ -184,6 +192,7 @@ class ConnectorAPI(BaseAPI):
         Args:
             perf (bool):        Add performance data (cpu, mem, disk, dialout)
             json_fmt (bool):    Output as JSON instead of CSV
+            show_apps (bool):   Add an extra field 'apps' as array of application UUID
             follow (bool):      Never stop until Control+C or SIGTERM is received
             interval (float):   Interval in seconds between pulling the API, default is 5 minutes (300s)
             stop_event (Event): Main program stop event allowing the function
@@ -192,7 +201,7 @@ class ConnectorAPI(BaseAPI):
         while True or (stop_event and not stop_event.is_set()):
             try:
                 start = time.time()
-                self.list_once(perf, json_fmt)
+                self.list_once(perf, json_fmt, show_apps)
                 if follow:
                     sleep_time = interval - (time.time() - start)
 
@@ -213,6 +222,24 @@ class ConnectorAPI(BaseAPI):
                 else:
                     raise
 
+    @lru_cache(maxsize=1)
+    def all_apps(self, exp):
+        """
+        This method is expensive in time so we use `lru_cache decorator`
+        with a size of 1, combined with a functiom argument `exp` that will be 
+        used as expiration or cache key.
+
+        Args:
+            exp (integer): cache key
+        Returns:
+            [dict]: JSON dictionnary containing all the applications for this tenant
+        """
+        url_params = {'limit': ApplicationAPI.LIMIT_SOFT, 'expand': 'true'}
+        search_app = self.get('mgmt-pop/apps', params=url_params)
+        print(search_app.json())
+        return search_app.json()
+
+
     def findappbyconnector(self, connector_moniker):
         """
         Find EAA Applications using a particular connector.
@@ -221,20 +248,23 @@ class ConnectorAPI(BaseAPI):
             connector_moniker (EAAItem): Connector ID.
 
         Returns:
-            Tuple of 3 values:
+            Tuple of 4 values:
                 - application moniker
                 - application name
-                - application host (external hostname)
+                - application host (external hostname - FQDN)
                 - dialout version (1 or 2)
 
         Raises:
             TypeError: If the argument is wrong type.
         """
+
         if not isinstance(connector_moniker, EAAItem):
             raise TypeError("EAAItem expected.")
-        url_params = {'limit': ApplicationAPI.LIMIT_SOFT, 'expand': 'true'}
-        search_app = self.get('mgmt-pop/apps', params=url_params)
-        apps = search_app.json()
+
+        now = time.time()
+        exp = now - now % (-1 * ConnectorAPI.APP_CACHE_TTL)
+        apps = self.all_apps(exp)
+
         logging.debug("Searching app using %s..." % connector_moniker)
         for app in apps.get('objects', []):
             # Only tunnel apps are using Dialout Version 2
@@ -242,10 +272,13 @@ class ConnectorAPI(BaseAPI):
             for con in app.get('agents', []):
                 app_moniker = EAAItem("app://" + app.get('uuid_url'))
                 con_moniker = EAAItem("con://" + con.get('uuid_url'))
+                app_host = app.get('host')
+                if app.get('domain') == 2:
+                    app_host += "." + app.get('domain_suffix')
                 if con_moniker == connector_moniker:
                     yield app_moniker, \
                           app.get('name'), \
-                          app.get('host'), \
+                          app_host, \
                           dialout_ver
 
     def list_apps(self, con_moniker, perf=False):

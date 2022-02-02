@@ -215,6 +215,8 @@ You will get 7 extra columns:
 - Idle dialout connections
 - Active dialout connections
 
+To correlate with application served by each connectors, use the `--showapps`, a list of the application FQDNs as an array in the JSON response.
+
 #### Swapping connectors
 
 If you are doing a maintenance on an hypervizor, you may need to swap out 2 connectors.
@@ -261,7 +263,7 @@ Use 'akamai eaa cert crt://certificate-UUID status' to monitor the progress.
 Checking the status of the deployment:
 
 ```
-./akamai-eaa cert crt://certificate-UUID status
+$ akamai eaa cert crt://certificate-UUID status
 #App/IdP ID,name,status
 app://appid-1,Multi-origin Active-Active Demo (US-East),Pending
 app://appid-2,Multi-origin Active-Active Demo (US-West),Pending
