@@ -1,4 +1,4 @@
-# Copyright 2021 Akamai Technologies, Inc. All Rights Reserved
+# Copyright 2022 Akamai Technologies, Inc. All Rights Reserved
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -37,7 +37,7 @@ import inspect
 config = EdgeGridConfig({'verbose': False}, 'default')
 
 #: cli-eaa version
-__version__ = '0.4.6'
+__version__ = '0.4.7'
 
 #: HTTP Request Timeout in seconds
 HTTP_REQ_TIMEOUT = 300
@@ -90,6 +90,7 @@ class cli:
     def exit_gracefully(signum, frame):
         logging.info(f"Stop due to SIGTERM(15) or SIGINT(2) signal received: {signum} ")
         cli.stop_event.set()
+
 
 class EAALegacyAuth(requests.auth.AuthBase):
     """

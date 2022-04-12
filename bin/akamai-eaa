@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright 2021 Akamai Technologies, Inc. All Rights Reserved
+# Copyright 2022 Akamai Technologies, Inc. All Rights Reserved
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@ import fnmatch
 import signal
 import http.client as http_client
 from json import dumps
+from math import ceil
 
 # cli-eaa
 import _paths
@@ -45,6 +46,7 @@ verbose = getattr(config, 'verbose', False)
 
 LOG_FMT = '%(asctime)s %(name)s %(levelname).1s %(message)s'
 
+
 class SearchAPI(BaseAPI):
     """
     Search EAA applications
@@ -57,17 +59,55 @@ class SearchAPI(BaseAPI):
         super(SearchAPI, self).__init__(config, api=BaseAPI.API_Version.OpenAPI)
 
     def search_app(self, search_pattern):
-        url_params = {'limit': SearchAPI.SCAN_LIMIT, 'expand': 'true'}
-        search_app = self.get('mgmt-pop/apps', params=url_params)
-        self.process_response(search_app.json(), search_pattern)
+        """
+        Search for a particular application pattern, or all if no pattern is provided.
+        Corresponding API documentation: https://techdocs.akamai.com/eaa-api/reference/get-apps
+        """
 
-    def process_response(self, data, search_pattern):
+        url_params = {'limit': SearchAPI.SCAN_LIMIT, 'expand': 'true'}
+        first_search = self.get('mgmt-pop/apps', params=url_params)
+        data = first_search.json()
         app_found = 0
+        app_scanned = 0
+
+        # CLI ouput header
+        cli.print('#app_id,type,name,host,cname,cert_id,status,reachable')
+        stats = self.process_page(data, search_pattern)
+        app_scanned += stats[0]
+        app_found += stats[1]
+
         if data.get("meta"):
+
             app_count = data.get("meta").get("total_count")
-            # Header
-            cli.print('#app_id,type,name,host,cname,cert_id,status,reachable')
+            page_offset = data.get("meta").get("offset")
+            page_limit = data.get("meta").get("limit")
+            page_total = ceil(app_count / page_limit)
+
+            logging.debug("app_count: {}, scanned: {}, offset: {}, limit: {}, pages: {}".format(
+                app_count, app_scanned, page_offset, page_limit, page_total))
+
+            for page in range(1, page_total):
+                logging.debug("Loading application page {} of {}".format(page, page_total))
+                url_params['offset'] = page * page_limit
+                search = self.get('mgmt-pop/apps', params=url_params)
+                stats = self.process_page(search.json(), search_pattern)
+                app_scanned += stats[0]
+                app_found += stats[1]
+
+            # CLI ouput footer
+            if not config.batch:
+                if app_found != app_count:
+                    cli.footer("Found %s app(s), total %s app(s)" % (app_found, app_count))
+                else:
+                    cli.footer("%s app(s)" % app_count)
+
+    def process_page(self, data, search_pattern):
+        app_found = 0
+        app_scanned = 0
+
+        if data.get("meta"):
             for a in data.get('objects', []):
+                app_scanned += 1
                 if not search_pattern or (
                     search_pattern and (
                         fnmatch.fnmatch(a.get('name') or "", "*%s*" % search_pattern) or
@@ -88,14 +128,8 @@ class SearchAPI(BaseAPI):
                         status=ApplicationAPI.Status(a.get('app_status')).name,
                         reach=('Y' if a.get('resource_status', {}).get('host_reachable') else 'F'))
                     )
-                    # cli.print(json.dumps(a))
                     app_found += 1
-            # Footer
-            if not config.batch:
-                if app_found != app_count:
-                    cli.footer("Found %s app(s), total %s app(s)" % (app_found, app_count))
-                else:
-                    cli.footer("%s app(s)" % app_count)
+        return app_scanned, app_found
 
 
 class ReportingAPI(BaseAPI):
