@@ -44,7 +44,8 @@ class EventLogAPI(common.BaseAPI):
 
     #: Pull interval when using the tail mode
     PULL_INTERVAL_SEC = 15
-    COLLECTION_DELAY_MINUTES = 1
+    #: Pull delay mininum
+    COLLECTION_MIN_DELAY_SEC = 60
 
     class EventType(Enum):
         USER_ACCESS = "access"
@@ -53,7 +54,6 @@ class EventLogAPI(common.BaseAPI):
     ADMINEVENT_API = "adminevents-reports/ops/splunk-query"
     ACCESSLOG_API = "analytics/ops"
     ACCESSLOG_API_V2 = "analytics/ops-data"
-
 
     def __init__(self, config):
         super(EventLogAPI, self).__init__(config, api=common.BaseAPI.API_Version.Legacy)
@@ -113,17 +113,19 @@ class EventLogAPI(common.BaseAPI):
             raise ValueError("Unsupported log type %s" % logtype)
         retry = POST_RETRY_MAX
         scroll_id = None
+
         try:
             # Fetches the logs for given drpc args
             # 2021-09-08: Introduce a special retry mechanism for these API log endpoints
             #             only if there is a ConnectionError. Some data loss may occur as
             #             the remote server expect to deliver using a scrolling mechanism
+            count = 0
             while retry > 0:
                 try:
                     retry -= 1
                     resp = self.post(self.get_api_url(logtype, logversion), json=drpc_args)
                     break
-                except requests.exceptions.ConnectionError as ce:
+                except requests.exceptions.ConnectionError:
                     logging.warn(f"ConnectionError, retry left: {retry}")
                     time.sleep(1)
                     if retry == 0:
@@ -148,7 +150,6 @@ class EventLogAPI(common.BaseAPI):
                     raise NotImplementedError("Doesn't support log type %s" % logtype)
 
                 logging.debug("scroll_id: %s" % scroll_id)
-                count = 0
 
                 if logtype == self.EventType.USER_ACCESS:
                     # V1 will be relevant till around EAA 2021.03 release
@@ -179,7 +180,7 @@ class EventLogAPI(common.BaseAPI):
                                 logging.exception("Error parsing access log line")
                     # V2 will be available starting 2021.02, will return 404 before
                     elif logversion == 2:
-                        logging.debug(json.dumps(msg, indent=2))
+                        # logging.debug(json.dumps(msg, indent=2))
                         for e in resj.get('message', [])[0][1].get('data', []):
                             local_time = datetime.datetime.fromtimestamp(e.get('ts')/1000)
                             line = "%s\n" % ' '.join([local_time.isoformat(), e.get('flog')])
@@ -231,12 +232,12 @@ class EventLogAPI(common.BaseAPI):
                 logging.debug("resp.text %s" % resp.text)
             logging.error(drpc_args)
             logging.exception("Exception in get_logs")
-        return scroll_id
+        return (scroll_id, count)
 
     @staticmethod
-    def date_boundaries():
+    def date_boundaries(delay_sec):
         # end time in milliseconds, now minus collection delay
-        ets = int(time.mktime(time.localtime()) * 1000 - (EventLogAPI.COLLECTION_DELAY_MINUTES * 60 * 1000))
+        ets = int(time.mktime(time.localtime()) * 1000 - (delay_sec * 1000))
         if config.end:
             ets = config.end * 1000
         # start time in milliseconds: end time minus poll interval
@@ -259,6 +260,8 @@ class EventLogAPI(common.BaseAPI):
         logging.info("PID: %s" % os.getpid())
         logging.info("Poll interval: %s seconds" % EventLogAPI.PULL_INTERVAL_SEC)
         out = None
+        count = 0
+
         try:
             if isinstance(self._output, str):
                 logging.info("Output file: %s" % self._output)
@@ -272,8 +275,10 @@ class EventLogAPI(common.BaseAPI):
             else:
                 start_position = 0
 
+            fetch_log_count = 0
             while not stop_event.is_set():
-                ets, sts = EventLogAPI.date_boundaries()
+                delay_sec = max(config.delay, EventLogAPI.COLLECTION_MIN_DELAY_SEC)
+                ets, sts = EventLogAPI.date_boundaries(delay_sec)
                 s = time.time()
                 logging.info("Fetching log[%s] from %s to %s..." % (log_type, sts, ets))
                 if log_type == log_type.ADMIN:
@@ -292,7 +297,8 @@ class EventLogAPI(common.BaseAPI):
                     }
                     if scroll_id is not None:
                         drpc_args.update({'scroll_id': str(scroll_id)})
-                    scroll_id = self.get_logs(drpc_args, log_type, config.log_version, out)
+                    scroll_id, count = self.get_logs(drpc_args, log_type, config.log_version, out)
+                    fetch_log_count += count
                     out.flush()
                     if scroll_id is None:
                         break
@@ -309,8 +315,17 @@ class EventLogAPI(common.BaseAPI):
                     break
                 else:
                     elapsed = time.time() - s
+                    logging.debug("[config] Limit={}, Delay={} sec, Window={:.0f} ms".format(
+                        self._config.limit, self._config.delay, ets-sts))
+                    logging.debug(("[perf] {} event(s) took {:.3f} sec, "
+                                  "fetch speed={:.1f} eps/{:,.0f} epm").format(fetch_log_count, elapsed,
+                                  fetch_log_count/elapsed, 60*fetch_log_count/elapsed))
+                    if elapsed > EventLogAPI.PULL_INTERVAL_SEC:
+                        logging.warn("!! Data loss warning !! API request/responses takes too long. "
+                                     "Check internet connectivity.")
                     logging.debug("Now waiting %s seconds..." % (EventLogAPI.PULL_INTERVAL_SEC - elapsed))
                     stop_event.wait(EventLogAPI.PULL_INTERVAL_SEC - elapsed)
+                    fetch_log_count = 0
                     if stop_event.is_set():
                         break
         except Exception:

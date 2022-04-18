@@ -48,6 +48,8 @@ class EdgeGridConfig():
                                   help="Use API version 2 for access logs.")
         event_parser.add_argument('--limit', type=int, default=1000,
                                   help="Size of logs to fetch in one API call. Max supported 5000")
+        event_parser.add_argument('--delay', type=int, default=60,
+                                  help="Log delay is seconds, minimum is 60s")
         event_parser.add_argument('--tail', '-f', action='store_true', default=False,
                                   help="""Do not stop when most recent log is reached,
                                   but rather to wait for additional data to be appended to the input.""")
