@@ -13,6 +13,7 @@
   - [Connectors](#connectors)
     - [Swapping connectors](#swapping-connectors)
   - [Certificate management](#certificate-management)
+  - [Device Posture Inventory](#device-posture-inventory)
 - [Known Limitations](#known-limitations)
 - [Troubleshooting and Support](#troubleshooting-and-support)
   - [Self-troubleshooting](#self-troubleshooting)
@@ -249,7 +250,7 @@ deployment of all impacted applications and IdP, add the ``--deployafter``.
 
 Example using `--deployafter`:
 ```
-akamai eaa certificate crt://certificate-UUID rotate --key ~/certs/mycert.key --cert ~/certs/mycert.cert --deployafter
+$ akamai eaa certificate crt://certificate-UUID rotate --key ~/certs/mycert.key --cert ~/certs/mycert.cert --deployafter
 Rotating certificate certificate-UUID...
 Certificate CN: *.akamaidemo.net (*.akamaidemo.net Lets Encrypt)
 Certificate certificate-UUID updated, 3 application/IdP(s) have been marked ready for deployment.
@@ -262,12 +263,20 @@ Use 'akamai eaa cert crt://certificate-UUID status' to monitor the progress.
 
 Checking the status of the deployment:
 
-```
+```bash
 $ akamai eaa cert crt://certificate-UUID status
 #App/IdP ID,name,status
 app://appid-1,Multi-origin Active-Active Demo (US-East),Pending
 app://appid-2,Multi-origin Active-Active Demo (US-West),Pending
 idp://idpid-1,Bogus IdP to test EME-365,Pending
+```
+
+### Device Posture Inventory
+
+Pipe the result of the inventory into `jq` to display only device ID, name and user_id
+
+```bash
+$ akamai eaa dp inventory | jq '.[] | {device_id, device_name, user_id}'
 ```
 
 ## Known Limitations

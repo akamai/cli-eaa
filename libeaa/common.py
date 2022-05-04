@@ -37,7 +37,7 @@ import inspect
 config = EdgeGridConfig({'verbose': False}, 'default')
 
 #: cli-eaa version
-__version__ = '0.4.8'
+__version__ = '0.4.9'
 
 #: HTTP Request Timeout in seconds
 HTTP_REQ_TIMEOUT = 300

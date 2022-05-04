@@ -31,6 +31,7 @@ import signal
 import http.client as http_client
 from json import dumps
 from math import ceil
+from urllib.parse import parse_qsl
 
 # cli-eaa
 import _paths
@@ -165,6 +166,57 @@ class ReportingAPI(BaseAPI):
             info['cloudzones'].append(eaa_cloudzone.get('region'))
         print(dumps(info, indent=4))
 
+    def deviceposture_inventory(self, follow=False, interval=300):
+        """
+        Fetch Device Posture inventory once or until a SIG_TERM is received or Control-C is pressed
+
+        Args:
+            follow (bool, optional): Will not terminate and keep pulling every `interval` sec. Defaults to False.
+            interval (int, optional): Interval in seconds to pull the inventory. Defaults to 300.
+        """
+        while not cli.stop_event.is_set():
+            start = time.time()
+            offset = 0
+            limit = 3000
+            devices = []
+
+            while not cli.stop_event.is_set():
+                page_start = time.time()
+                resp = self.get('device-posture/inventory/list', params={'offset': offset, 'limit': limit})
+                if resp.status_code != 200:
+                    cli.print_error("Non HTTP 200 response fromt the API")
+                    cli.exit(2)
+                doc = resp.json()
+                meta = doc.get('meta', {})
+                next_page = meta.get('next')
+                limit = meta.get('limit')
+                objects_in_page = doc.get('objects', [])
+                offset = dict(parse_qsl(next_page)).get('offset')
+                logging.debug("--- DP Inventory page with {c} devices fetched in {elapsed:.2f} seconds".format(
+                              c=len(objects_in_page), elapsed=time.time()-page_start))
+                devices += objects_in_page
+                if not next_page:
+                    break
+
+            print(dumps(devices, indent=4))
+            logging.debug("DP Inventory Total {device_count} devices fetched in {elapsed:.2f} seconds".format(
+                          device_count=len(devices), elapsed=time.time()-start))
+            if follow is False:
+                break
+            else:
+                wait_time = interval - (time.time() - start)  # interval - time elapsed
+                if wait_time > 0:
+                    logging.debug("Sleeping for {:.2f} seconds".format(wait_time))
+                    time.sleep(wait_time)
+                else:
+                    logging.warn("Fetching data takes more time than the interval, "
+                                 "consider increase the --interval parameter")
+
+    def deviceposture_devicehistory(self, device_id):
+        resp = self.get('device-posture/inventory/device-history/{deviceId}'.format(deviceId=device_id))
+        print(dumps(resp.json(), indent=4))
+
+
 
 def setup_logging():
 
@@ -254,6 +306,15 @@ if __name__ == "__main__":
         elif config.command in ("info", ):
             r = ReportingAPI(config)
             r.tenant_info()
+        elif config.command in ("dp", ):
+            if config.dpcommand == "inventory":
+                s = ReportingAPI(config)
+                s.deviceposture_inventory(config.tail, config.interval)
+            elif config.dpcommand == "history":
+                s = ReportingAPI(config)
+                s.deviceposture_devicehistory(config.device_id)
+            else:
+                print("invalid Device Posture command: {config.dpcommand}")
         else:
             config.parser.print_help()
             sys.exit(1)

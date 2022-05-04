@@ -160,6 +160,16 @@ class EdgeGridConfig():
 
         subparsers.add_parser('info', help='Display tenant info')
 
+        dp_parser = subparsers.add_parser('dp', help='Device Posture')
+        dp_parser.add_argument("dpcommand", choices=['inventory'], default="inventory")
+        dp_parser.add_argument("--tail", "-f", default=False, action="store_true",
+                               help="Keep pulling the inventory every interval seconds")
+        dp_parser.add_argument("--interval", "-i", type=int, default=600,
+                               help="Pulling interval in seconds (default: 600)")
+
+#        dpdh = subparsers.add_parser('dp_devhist', help='Device Posture Device History (experimental)')
+#        $dpdh.add_argument("device_id")
+
         subparsers.add_parser('version', help='Display cli-eaa module version')
 
         parser.add_argument('--batch', '-b', default=False, action='store_true',
