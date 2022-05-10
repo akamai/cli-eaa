@@ -1,6 +1,5 @@
-# Python edgegrid module - CONFIG for EAA CLI module
 """
- Copyright 2021 Akamai Technologies, Inc. All Rights Reserved.
+ Copyright 2022 Akamai Technologies, Inc. All Rights Reserved.
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
 
@@ -15,7 +14,8 @@
  limitations under the License.
 """
 
-import sys
+# Python edgegrid module - CONFIG for EAA CLI module
+
 import os
 import argparse
 
@@ -23,6 +23,7 @@ from configparser import ConfigParser
 
 import _paths
 from error import rc_error, cli_exit_with_error
+
 
 class EdgeGridConfig():
 
@@ -42,9 +43,9 @@ class EdgeGridConfig():
         event_parser.add_argument('--output', '-o', help="Output file, default is stdout. Encoding is utf-8.")
         event_parser.add_argument('--json', '-j', action="store_true", default=False,
                                   help="Output as JSON instead of raw line")
-        event_parser.add_argument('--v1', '-1', dest="log_version", action="store_const", const=1, default=2, 
+        event_parser.add_argument('--v1', '-1', dest="log_version", action="store_const", const=1, default=2,
                                   help="Use API version 1 for access logs.")
-        event_parser.add_argument('--v2', '-2', dest="log_version", action="store_const", const=2, default=2, 
+        event_parser.add_argument('--v2', '-2', dest="log_version", action="store_const", const=2, default=2,
                                   help="Use API version 2 for access logs.")
         event_parser.add_argument('--limit', type=int, default=1000,
                                   help="Size of logs to fetch in one API call. Max supported 5000")
@@ -110,7 +111,7 @@ class EdgeGridConfig():
                                    help='Detach one or multiple connectors to the application, e.g. con://123456.')
 
         deploy_parser = subsub.add_parser("deploy", help="Deploy the application")
-        deploy_parser.add_argument("--comment", "-c", nargs="?", default="Deploy from cli-eaa", 
+        deploy_parser.add_argument("--comment", "-c", nargs="?", default="Deploy from cli-eaa",
                                    help="Comment for the deployment")
         subsub.add_parser("update", help="Update an existing application")
         subsub.add_parser("create", help="Create a new application")
@@ -147,10 +148,12 @@ class EdgeGridConfig():
         list_parser = subsub.add_parser("list", help="List all connectors")
         list_parser.add_argument('--perf', default=False, action="store_true", help='Show performance metrics')
         list_parser.add_argument('--json', '-j', default=False, action="store_true", help='View as JSON')
-        list_parser.add_argument('--showapps', '-a', default=False, action="store_true", 
+        list_parser.add_argument('--showapps', '-a', default=False, action="store_true",
                                  help='Response contains the applications running on the connector (JSON only)')
-        list_parser.add_argument('--tail', '-f', default=False, action="store_true", help='Keep watching, do not exit until Control+C/SIGTERM')
-        list_parser.add_argument('--interval', '-i', default=300, type=float, help='Interval between update (works with --tail only)')
+        list_parser.add_argument('--tail', '-f', default=False, action="store_true",
+                                 help='Keep watching, do not exit until Control+C/SIGTERM')
+        list_parser.add_argument('--interval', '-i', default=300, type=float,
+                                 help='Interval between update (works with --tail only)')
         # subparsers.required = False
         swap_parser = subsub.add_parser("swap", help="Swap connector with another one")
         swap_parser.add_argument(dest="new_connector_id", help='New connector ID')
@@ -166,6 +169,8 @@ class EdgeGridConfig():
                                help="Keep pulling the inventory every interval seconds")
         dp_parser.add_argument("--interval", "-i", type=int, default=600,
                                help="Pulling interval in seconds (default: 600)")
+        # Placeholder future json vs. flat output
+        dp_parser.add_argument("--json", "-j", type=bool, default=True, help=argparse.SUPPRESS)
 
 #        dpdh = subparsers.add_parser('dp_devhist', help='Device Posture Device History (experimental)')
 #        $dpdh.add_argument("device_id")
@@ -177,7 +182,7 @@ class EdgeGridConfig():
         parser.add_argument('--debug', '-d', default=False, action='count', help=' Debug mode (log HTTP headers)')
         parser.add_argument('--edgerc', '-e', default='~/.edgerc', metavar='credentials_file',
                             help=' Location of the credentials file (default is %s)' % os.path.expanduser("~/.edgerc"))
-        parser.add_argument('--proxy', '-p', default='', help=''' HTTP/S Proxy Host/IP and port number, 
+        parser.add_argument('--proxy', '-p', default='', help=''' HTTP/S Proxy Host/IP and port number,
                                                                   do not use prefix (e.g. 10.0.0.1:8888)''')
         parser.add_argument('--section', '-c', default='default', metavar='credentials_file_section', action='store',
                             help=' Credentials file Section\'s name to use (\'default\' if not specified).')
