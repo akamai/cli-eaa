@@ -170,7 +170,7 @@ class EdgeGridConfig():
         dp_parser.add_argument("--interval", "-i", type=int, default=600,
                                help="Pulling interval in seconds (default: 600)")
         # Placeholder future json vs. flat output
-        dp_parser.add_argument("--json", "-j", type=bool, default=True, help=argparse.SUPPRESS)
+        dp_parser.add_argument("--json", "-j", action="store_true", default=True, help=argparse.SUPPRESS)
 
 #        dpdh = subparsers.add_parser('dp_devhist', help='Device Posture Device History (experimental)')
 #        $dpdh.add_argument("device_id")

@@ -38,3 +38,8 @@ CLI="python3 ${BATS_TEST_DIRNAME}/../bin/akamai-eaa"
   result="$(${CLI} dp inventory)"
   [ "$?" -eq 0 ]
 }
+
+@test "Device Posture Inventory (JSON)" {
+  result="$(${CLI} dp inventory --json)"
+  [ "$?" -eq 0 ]
+}
