@@ -11,9 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 from enum import Enum
 import logging
 import json
+
+from cryptography import x509
+from cryptography.hazmat.backends import default_backend
 
 from common import cli, BaseAPI, EAAItem, config
 from application import ApplicationAPI
@@ -37,14 +41,28 @@ class CertificateAPI(BaseAPI):
     def __init__(self, config):
         super(CertificateAPI, self).__init__(config, api=BaseAPI.API_Version.OpenAPI)
 
+    def cert_hosts(self, cert):
+        "Extract CN and SAN hostname from certificate."
+        hosts = []
+        loaded_cert = x509.load_pem_x509_certificate(str.encode(cert), default_backend())
+        common_name = loaded_cert.subject.get_attributes_for_oid(x509.oid.NameOID.COMMON_NAME)
+        hosts.extend(v.value for v in common_name)
+        try:
+            san = loaded_cert.extensions.get_extension_for_class(x509.SubjectAlternativeName)
+            san_dns_names = san.value.get_values_for_type(x509.DNSName)
+            hosts.extend(san_dns_names)
+        except x509.ExtensionNotFound:
+            pass  # SAN is optional
+        return hosts
+
     def list(self):
         url_params = {'expand': 'true', 'limit': 0}
         data = self.get('mgmt-pop/certificates', params=url_params)
         certificates = data.json()
         total_cert = 0
         logging.info(json.dumps(data.json(), indent=4))
-        cli.print('#Certificate-ID,cn,type,expiration,days left')
-        format_line = "{scheme}{uuid},{cn},{cert_type},{expiration},{days_left}"
+        cli.print('#Certificate-ID,cn,type,expiration,days left,hosts')
+        format_line = "{scheme}{uuid},{cn},{cert_type},{expiration},{days_left},{hosts}"
         for total_cert, c in enumerate(certificates.get('objects', {}), start=1):
             cli.print(format_line.format(
                 scheme=EAAItem.Type.Certificate.scheme,
@@ -52,7 +70,8 @@ class CertificateAPI(BaseAPI):
                 cn=c.get('cn'),
                 cert_type=CertificateAPI.Type(c.get('cert_type')).name,
                 expiration=c.get('expired_at'),
-                days_left=c.get('days_left')
+                days_left=c.get('days_left'),
+                hosts='+'.join(self.cert_hosts(c.get('cert')))
             ))
         cli.footer("Total %s certificate(s)" % total_cert)
 

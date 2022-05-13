@@ -43,3 +43,8 @@ CLI="python3 ${BATS_TEST_DIRNAME}/../bin/akamai-eaa"
   result="$(${CLI} dp inventory --json)"
   [ "$?" -eq 0 ]
 }
+
+@test "Certificates" {
+  result="$(${CLI} cert)"
+  [ "$?" -eq 0 ]
+}
