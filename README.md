@@ -13,6 +13,8 @@
   - [Connectors](#connectors)
     - [Swapping connectors](#swapping-connectors)
   - [Certificate management](#certificate-management)
+    - [Display certificates](#display-certificates)
+    - [Rotation](#rotation)
   - [Device Posture Inventory](#device-posture-inventory)
 - [Known Limitations](#known-limitations)
 - [Troubleshooting and Support](#troubleshooting-and-support)
@@ -240,7 +242,22 @@ Updated application(s) is/are marked as ready to deploy
 
 ### Certificate management
 
+#### Display certificates
+
+The following command `cert` will display all the certificate you have configured in EAA. It will also display the CN and SAN attribute and display all the thoses in the `hosts` field. If multiple, we use `+` as a separator.
+
+Here an example with a wildcard certificate:
+
+```
+$ akamai eaa cert | head -n1
+#Certificate-ID,cn,type,expiration,days left,hosts
+crt://KXi553saQSCeNI1_WH6xuA,*.akamaidemo.net,Custom,2031-06-05T22:56:34,3307,*.akamaidemo.net+akamaidemo.net
+```
+
+#### Rotation
+
 One of the most common task with certificate it to rotate before the current certificate expires.
+
 cli-eaa helps with this task with the `akamai eaa certificate` command. 
 
 You simply pass the certificate  and key file as parameter, the optional passphrase and the 
