@@ -199,7 +199,9 @@ class ReportingAPI(BaseAPI):
                 if not next_page:
                     break
 
-            print(dumps(devices, indent=4))
+            for d in devices:
+                cli.print(dumps(d))
+
             logging.debug("DP Inventory Total {device_count} devices fetched in {elapsed:.2f} seconds".format(
                           device_count=len(devices), elapsed=time.time()-start))
             if follow is False:
