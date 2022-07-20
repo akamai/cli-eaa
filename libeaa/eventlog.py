@@ -131,7 +131,7 @@ class EventLogAPI(common.BaseAPI):
                     if retry == 0:
                         raise RetryError(f"Give up fetching log after {POST_RETRY_MAX} retries.")
 
-            if resp.status_code != requests.codes.ok:
+            if resp.status_code != 200:
                 logging.error("Invalid API response status code: %s" % resp.status_code)
                 return None
 

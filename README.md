@@ -67,12 +67,13 @@ See [install.md](docs/install.md)
 
 ### EAA event logs
 
-EAA has two types of logs, the user access logs and the administrators audit logs.
-For detailed description about each field, please refer to the product documentation on [https://learn.akamai.com](https://learn.akamai.com/en-us/webhelp/enterprise-application-access/eaa-logs-from-eaa-api-and-splunk/GUID-07D6B02C-1EDE-4D16-A19D-687449B4A748.html).
+EAA comes with two types of logs, the user access logs and the administrators audit logs.
+For detailed description about each field, please refer to the product documentation on [https://techdocs.akamai.com](https://techdocs.akamai.com/eaa/docs/data-feed-siem).
 
 You can pull EAA events either:
 - in near realtime using the argument `-f` or `--tail`
 - or retrieve a period of time passing EPOCH timestamp in `--start` and `--end`
+- tune the acceptable delay vs. completeness with `--delay`, we recommend 10 minutes delay for full completeness
 
 If you set `-f` and date range, the `-f` option will be ignored.
 

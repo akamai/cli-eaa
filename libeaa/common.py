@@ -37,7 +37,7 @@ import inspect
 config = EdgeGridConfig({'verbose': False}, 'default')
 
 #: cli-eaa version
-__version__ = '0.5.0'
+__version__ = '0.5.0.1'
 
 #: HTTP Request Timeout in seconds
 HTTP_REQ_TIMEOUT = 300
@@ -239,10 +239,11 @@ class BaseAPI(object):
             logging.info("BaseAPI: GET response body: %s" % response.text)
         return response
 
-    def post(self, url_path, json=None, params=None):
+    def post(self, url_path, json=None, params=None, allow_redirects=True):
         url = urljoin(self._baseurl, url_path)
         logging.info("API URL: %s" % url)
-        response = self._session.post(url, json=json, params=self.build_params(params), timeout=HTTP_REQ_TIMEOUT)
+        response = self._session.post(url, json=json, params=self.build_params(params),
+                                      timeout=HTTP_REQ_TIMEOUT, allow_redirects=allow_redirects)
         logging.info("BaseAPI: POST response is HTTP %s" % response.status_code)
         if response.status_code != 200:
             logging.info("BaseAPI: POST response body: %s" % response.text)
