@@ -29,7 +29,6 @@ import six
 import requests
 from config import EdgeGridConfig
 from akamai.edgegrid import EdgeGridAuth, EdgeRc
-import inspect
 
 
 # If all parameters are set already, use them.  Otherwise
@@ -37,7 +36,7 @@ import inspect
 config = EdgeGridConfig({'verbose': False}, 'default')
 
 #: cli-eaa version
-__version__ = '0.5.0.1'
+__version__ = '0.5.0.2'
 
 #: HTTP Request Timeout in seconds
 HTTP_REQ_TIMEOUT = 300
@@ -113,6 +112,7 @@ class EAALegacyAuth(requests.auth.AuthBase):
 
     def __call__(self, r):
         r.headers.update({'Authorization': 'Basic %s:%s' % (self._key, self._signature)})
+        r.headers.update({'Referer': '%s' % self._key[-6:]})
         return r
 
 
