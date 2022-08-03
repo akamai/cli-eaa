@@ -197,7 +197,8 @@ class EventLogAPI(common.BaseAPI):
                 elif logtype == self.EventType.ADMIN:
                     for item in msg.get('data'):
                         try:
-                            local_time = datetime.datetime.fromtimestamp(int(item.get('ts')/1000))
+                            local_time = datetime.datetime.fromtimestamp(int(item.get('ts')/1000),
+                                                                         tz=datetime.timezone.utc)
                             line = u"{},{}\n".format(local_time.isoformat(), item.get('splunk_line'))
                             if config.json:
                                 admin_event_data = line.split(',')
