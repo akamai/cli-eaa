@@ -220,7 +220,6 @@ class ReportingAPI(BaseAPI):
         print(dumps(resp.json(), indent=4))
 
 
-
 def setup_logging():
 
     logging.basicConfig(filename=config.logfile, level=cli.log_level(), format=LOG_FMT)
@@ -229,6 +228,7 @@ def setup_logging():
     if config.debug:
         requests_log = logging.getLogger("requests.packages.urllib3")
         http_client.HTTPConnection.debuglevel = 1
+
         def httpclient_log(*args):
             requests_log.log(logging.DEBUG, " ".join(args))
         http_client.print = httpclient_log

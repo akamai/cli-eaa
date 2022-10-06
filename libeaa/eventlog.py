@@ -36,6 +36,14 @@ SOURCE = 'akamai-cli/eaa'
 POST_RETRY_MAX = 5
 
 
+def isDigit(x):
+    try:
+        float(x)
+        return True
+    except ValueError:
+        return False
+
+
 class EventLogAPI(common.BaseAPI):
     """
     EAA logs, this is using the legacy EAA API
@@ -65,25 +73,6 @@ class EventLogAPI(common.BaseAPI):
             self._output = sys.stdout
         self.line_count = 0
         self.error_count = 0
-        # Pre-compile the EAA user access log extractions regexp dictionary output
-        # This updates version is backward compatible pre-2021.03 and 2021.03
-        self.userlog_pattern = (r'^([^\s]*)\s(?P<username>[^\s]*)\s(?P<apphost>[\w\.\-]+)\s(?P<http_method>[A-Z]+)-'
-                                r'(?P<url_path>.*)\-(?P<http_ver>HTTP/[0-9\.]*)\s(?P<referer>[^\s]*)\s(?P<status_code>[0-9]*)\s'
-                                r'(?P<idpinfo>[^\s]*)\s(?P<clientip>[^\s]*)\s(?P<http_verb2>[^\s]*)\s(?P<total_resp_time>[^\s]*)\s'
-                                r'(?P<connector_resp_time>[^\s]*)\s(?P<datetime>[^\s]*)\s(?P<origin_resp_time>[^\s]*)\s'
-                                r'(?P<origin_host>[^\s]*)\s(?P<req_size>[^\s]*)\s(?P<content_type>[^\s]*)\s(?P<user_agent>[^\s]*)\s'
-                                r'(?P<device_os>[^\s]*)\s(?P<device_type>[^\s]*)\s(?P<geo_city>[^\s]*)\s(?P<geo_state>[^\s]*)\s'
-                                r'(?P<geo_statecode>[^\s]*)\s(?P<geo_countrycode>[^\s]*)\s(?P<geo_country>[^\s]*)\s'
-                                r'(?P<internal_host>[^\s]*)\s(?P<session_info>[^\s]*)\s(?P<groups>[^\s]*)\s'
-                                r'(?P<session_id>[^\s|$]*)(\s(?P<client_id>[^\s]*)\s(?P<deny_reason>[^\s]*)\s(?P<bytes_out>[^\s]*)\s(?P<bytes_in>[^\s]*)\s'
-                                r'((?P<con_ip>[^\:]*)\:(?P<con_srcport>[^\s]*)|\-)|)\s'
-                                r'(?P<con_uuid>[^\s]*)\s'
-                                r'(?P<cloud_zone>[^\s]*)\s'
-                                r'(?P<error_code>[^\s]*)\s'
-                                r'(?P<client_process>[^\s]*)\s'
-                                r'(?P<client_version>[^\s]*)'
-                                r'[\s.*|]')
-        self._userlog_regexp = re.compile(self.userlog_pattern)
 
     def userlog_prepjson(d):
         """
@@ -93,11 +82,11 @@ class EventLogAPI(common.BaseAPI):
         int_fields = ['req_size', 'status_code', 'bytes_out', 'bytes_in', 'con_srcport', 'error_code']
         float_fields = ['total_resp_time', 'connector_resp_time', 'origin_resp_time']
         for int_candidate in int_fields:
-            if d.get(int_candidate) and str.isdigit(d.get(int_candidate)):
+            if d.get(int_candidate) and isDigit(d.get(int_candidate)):
                 d[int_candidate] = int(d[int_candidate])
         for float_candidate in float_fields:
-            if d.get(float_candidate) and str.isdigit(d.get(float_candidate)):
-                d[float_candidate] = int(d[float_candidate])
+            if d.get(float_candidate) and isDigit(d.get(float_candidate)):
+                d[float_candidate] = float(d[float_candidate])
         return d
 
     def get_api_url(self, logtype):
@@ -107,6 +96,92 @@ class EventLogAPI(common.BaseAPI):
             return self.ACCESSLOG_API_V2
         else:
             raise Exception(f"Unknown access log type {logtype}")
+
+    def parse_access_log(self, line):
+        """
+        Parse an EAA row access log line coming from EAA SIEM API
+        This aligns with the official product documentation
+        https://techdocs.akamai.com/eaa/docs/data-feed-siem#access-logs
+
+        :param line: str EAA RAW log line
+        :returns: dict with all the parsed fields
+        """
+        unknown_field = "???????"
+        access_log_fields = {
+            1:  "local_datetime",
+            3:  "username",
+            5:  "apphost",
+            7:  "http_method",
+            9:  "url_path",
+            11: "http_ver",
+            13: "referer",
+            15: "status_code",
+            17: "idpinfo",
+            19: "clientip",
+            21: "http_verb2",
+            23: "total_resp_time",
+            25: "connector_resp_time",
+            27: "datetime",
+            29: "origin_resp_time",
+            31: "origin_host",
+            33: "req_size",
+            35: "content_type",
+            37: "user_agent",
+            39: "device_type",
+            41: "device_os",
+            43: "geo_city",
+            45: "geo_state",
+            47: "geo_statecode",
+            49: "geo_countrycode",
+            51: "geo_country",
+            53: "internal_host",
+            55: "session_info",
+            57: "groups",
+            59: "session_id",
+            61: "client_id",
+            63: "deny_reason",
+            65: "bytes_out",
+            67: "bytes_in",
+            69: "con_ip",
+            71: "con_srcport",
+            73: "con_uuid",        # Introduced in EAA 2022.02
+            75: "cloud_zone",      # Introduced in EAA 2022.02
+            77: "error_code",      # Introduced in EAA 2022.02
+            79: "client_process",  # Introduced in EAA 2022.02
+            81: "client_version"   # Introduced in EAA 2022.02
+        }
+
+        output_dict = {}
+        debug_padding = 22
+
+        logging.debug("------ begin debug log line -----")
+        field_pos = 1  # follows techdoc logic
+        for field in line.split(" "):
+            if field_pos == 7:
+                field7re = r'(?P<http_method>[A-Z]+)-(?P<url_path>.*)\-(?P<http_ver>HTTP/[0-9\.]*)'
+                field7result = re.search(field7re, field)
+                for subfieldkey in field7result.groupdict():
+                    field_name = access_log_fields.get(field_pos, unknown_field)
+                    logging.debug(f"#{field_pos:02} {field_name:>{debug_padding}}: {field7result[subfieldkey]}")
+                    output_dict[field_name] = field7result[subfieldkey]
+                    field_pos += 2
+            elif field_pos == 69:
+                if ":" in field:
+                    for connector_ip_srcport in field.split(":"):
+                        field_name = access_log_fields.get(field_pos, unknown_field)
+                        logging.debug(f"#{field_pos:02} {field_name:>{debug_padding}}: {connector_ip_srcport}")
+                        output_dict[field_name] = connector_ip_srcport
+                        field_pos += 2
+                else:
+                    field_pos += 4  # Skip connector IP <semicolon> source port
+            else:
+                field_name = access_log_fields.get(field_pos, unknown_field)
+                logging.debug(f"#{field_pos:02} {field_name:>{debug_padding}}: {field}")
+                output_dict[field_name] = field
+                field_pos += 2
+        logging.debug(f"------ end debug log line -----")
+
+        return output_dict
 
     def get_logs(self, drpc_args, logtype=EventType.USER_ACCESS, output=None):
         """
@@ -157,14 +232,13 @@ class EventLogAPI(common.BaseAPI):
                 if logtype == self.EventType.USER_ACCESS:
                     for e in resj.get('message', [])[0][1].get('data', []):
                         local_time = datetime.datetime.fromtimestamp(e.get('ts')/1000)
-                        line = "%s\n" % ' '.join([local_time.isoformat(), e.get('flog')])
+                        line = "%s" % ' '.join([local_time.isoformat(), e.get('flog')])
+                        if config.verbose or config.json:
+                            parsed_dict = self.parse_access_log(line)
                         if config.json:
-                            result = self._userlog_regexp.search(line)
-                            if result is None:
-                                raise Exception(f"Regexp {self.userlog_pattern} failed with data: {line}")
-                            output.write("%s\n" % json.dumps(EventLogAPI.userlog_prepjson(result.groupdict())))
+                            output.write("%s\n" % json.dumps(EventLogAPI.userlog_prepjson(parsed_dict)))
                         else:
-                            output.write(line)
+                            output.write(line + "\n")
                         logging.debug(f"### flog v2 [{self.line_count}] ## {e}")
                         self.line_count += 1
                         count += 1
