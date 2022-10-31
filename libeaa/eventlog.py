@@ -25,15 +25,16 @@ import re
 
 # 3rd party modules
 import requests
-from requests.exceptions import RetryError
-import six
 
 # cli-eaa modules
 import common
-from common import config, cli, isfloat
+from common import config, cli, CLIFatalException
 
+#: Source string for the Access/Admin Events API server
 SOURCE = 'akamai-cli/eaa'
-POST_RETRY_MAX = 5
+
+#: Expected Response Content Type from SIEM Log API
+RESPONSE_CONTENTTYPE = "application/json"
 
 
 def isDigit(x):
@@ -189,7 +190,6 @@ class EventLogAPI(common.BaseAPI):
         """
         if not isinstance(logtype, self.EventType):
             raise ValueError("Unsupported log type %s" % logtype)
-        retry = POST_RETRY_MAX
         scroll_id = None
 
         try:
@@ -198,20 +198,17 @@ class EventLogAPI(common.BaseAPI):
             #             only if there is a ConnectionError. Some data loss may occur as
             #             the remote server expect to deliver using a scrolling mechanism
             count = 0
-            while retry > 0:
-                try:
-                    retry -= 1
-                    resp = self.post(self.get_api_url(logtype), json=drpc_args)
-                    break
-                except requests.exceptions.ConnectionError:
-                    logging.warn(f"ConnectionError, retry left: {retry}")
-                    time.sleep(1)
-                    if retry == 0:
-                        raise RetryError(f"Give up fetching log after {POST_RETRY_MAX} retries.")
-
+            api_url = self.get_api_url(logtype)
+            resp = self.post(api_url, json=drpc_args)
+            if RESPONSE_CONTENTTYPE not in resp.headers['content-type']:
+                msg = (f"Invalid API response content-type: "
+                       f"{resp.headers['content-type']}, expecting '{RESPONSE_CONTENTTYPE}'. "
+                       f"URL: {resp.url}. "
+                       f"Check your API host/credentials.")
+                raise CLIFatalException(msg)
             if resp.status_code != 200:
-                logging.error("Invalid API response status code: %s" % resp.status_code)
-                return None
+                msg = "Invalid API response status code: %s" % resp.status_code
+                raise CLIFatalException(msg)
 
             resj = resp.json()
             logging.debug("JSON> %s" % json.dumps(resj, indent=2))
@@ -275,12 +272,18 @@ class EventLogAPI(common.BaseAPI):
                 logging.error(json.dumps(resj))
                 self.error_count += 1
             resp.close()
+        except CLIFatalException:
+            logging.exception("Fatal Exception")
+            cli.exit(2)
+        except requests.exceptions.RequestException:
+            logging.exception("Fatal HTTP/API transaction")
+            cli.exit(2)
         except Exception:
             if "resp" in locals():
                 logging.debug("resp.status_code %s" % resp.status_code)
                 logging.debug("resp.text %s" % resp.text)
             logging.error(drpc_args)
-            logging.exception("Exception in get_logs")
+            logging.exception("Generic Exception")
         return (scroll_id, count)
 
     @staticmethod
@@ -383,4 +386,5 @@ class EventLogAPI(common.BaseAPI):
             if out and self._output != sys.stdout:
                 logging.debug("Closing output file...")
                 out.close()
-            logging.info("%s log lines were fetched." % self.line_count)
+            if self.line_count > 0:
+                logging.info("%s log lines were fetched." % self.line_count)
