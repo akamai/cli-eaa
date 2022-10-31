@@ -154,34 +154,15 @@
     "directories": {% include 'includes/akdemo-directory.json' %},
     "domain": 2,
     "domain_suffix": "go.akamai-access.com",
-    "failover_popName": "AWS-US-WEST-POC",
-    "has_acls": true,
     "host": "akdemo-tunapp-{{ random_appsuffix }}",
     "idp": {% include 'includes/akdemo-idp.json' %},
-    "modified_at": "2020-10-24T05:31:34.497899",
     "name": "Client based app demo from CLI {{ random_appsuffix }}",
-    "orig_tls": "true",
-    "origin_host": null,
-    "origin_port": 443,
-    "pop": "QVOzu9KnQ2e3BgyhAYRcMw",
-    "popName": "AWS-US-EAST-POC",
-    "popRegion": "Client-US-East",
-    "rdp_version": "V1",
-    "saml": false,
-    "saml_settings": "[]",
-    "servers": [],
-    "sites": [
-        "3gpXRl-9TCSFAmA1ZImYBw"
-    ],
-    "ssl_ca_cert": "",
-    "supported_client_version": 1,
+    "pop": "{{ cli_cloudzone('Client-US-East') }}",
     "tunnel_internal_hosts": [
         {
             "host": "internal-app-{{ random_appsuffix }}.akamaidemo.net",
-            "is_ipaddress": 0,
-            "is_wildcard": 0,
             "port_range": "1-65535",
-            "proto_type": 3,
+            "proto_type": 3
         }
     ],
     "groups": {% include 'includes/akdemo-groups-default.json' %},
