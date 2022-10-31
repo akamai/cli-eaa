@@ -16,12 +16,13 @@ from enum import Enum
 import logging
 import sys
 import json
+import os
 
 # cli-eaa
 from common import cli, BaseAPI, EAAInvalidMoniker, EAAItem, config
 
 # 3rd party
-from jinja2 import Template
+from jinja2 import Environment, FileSystemLoader
 
 
 class ApplicationAPI(BaseAPI):
@@ -66,6 +67,10 @@ class ApplicationAPI(BaseAPI):
 
     class ServiceType(Enum):
         ACL = 6
+
+    class ClientMode(Enum):
+        TCP = 1
+        Tunnel = 2
 
     def __init__(self, config):
         super(ApplicationAPI, self).__init__(config, api=BaseAPI.API_Version.OpenAPI)
@@ -240,9 +245,10 @@ class ApplicationAPI(BaseAPI):
 
     def parse_template(self, raw_config):
         """
-        Parse a template
+        Parse the EAA configuration as JINJA2 template
         """
-        t = Template(raw_config)
+        logging.debug("Jinja template loader base directory: %s" % os.getcwd())
+        t = Environment(loader=FileSystemLoader(os.getcwd())).from_string(raw_config)
         t.globals['AppProfile'] = ApplicationAPI.Profile
         t.globals['AppType'] = ApplicationAPI.Type
         t.globals['AppDomainType'] = ApplicationAPI.Domain
@@ -261,7 +267,7 @@ class ApplicationAPI(BaseAPI):
 
         Note: the portal use the POST to create a new app with a minimal payload:
               {"app_profile":1,"app_type":1,"client_app_mode":1,"app_profile_id":"Fp3RYok1EeSE6AIy9YR0Dw",
-              "name":"tes","description":"test"}
+              "name":"test app","description":"This is my test app"}
               We should do the same here
         """
         app_config = json.loads(self.parse_template(raw_app_config))
@@ -272,6 +278,9 @@ class ApplicationAPI(BaseAPI):
             "name": app_config.get('name'),
             "description": app_config.get('description')
         }
+        # Client based app must be hinted at the first call
+        if app_config.get('client_app_mode'):
+            app_config_create["client_app_mode"] = app_config.get('client_app_mode', ApplicationAPI.ClientMode.TCP),
         newapp = self.post('mgmt-pop/apps', json=app_config_create)
         logging.info("Create app core: %s %s" % (newapp.status_code, newapp.text))
         if newapp.status_code != 200:
@@ -281,7 +290,7 @@ class ApplicationAPI(BaseAPI):
         app_moniker = EAAItem("app://{}".format(newapp_config.get('uuid_url')))
         logging.info("UUID of the newapp: %s" % app_moniker)
 
-        # Now we push everything else as a PUT
+        # Now we push everything else as a PUT (update)
         self.put('mgmt-pop/apps/{applicationId}'.format(applicationId=app_moniker.uuid), json=app_config)
 
         # Sub-components of the application configuration definition
