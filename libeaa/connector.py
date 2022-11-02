@@ -71,15 +71,15 @@ class ConnectorAPI(BaseAPI):
             perf_data_resp = self.get(systemres_api_url, params={'period': '1h'})
             perf_data = perf_data_resp.json()
             perf_latest = {
-                'timestamp': None, 
+                'timestamp': None,
                 'mem_pct': None, 'disk_pct': None, 'cpu_pct': None,
-                'network_traffic_mbps': None, 
+                'network_traffic_mbps': None,
                 'dialout_total': None, 'dialout_idle': None, 'active_dialout_count': None
             }
             if len(perf_data.get('data', [])) >= 1:
                 perf_latest = perf_data.get('data', [])[-1]
             return (connector_id, perf_latest)
-        except:
+        except Exception:
             logging.exception("Error during fetching connector performance health.")
 
     def perf_apps(self, connector_id):
@@ -204,15 +204,11 @@ class ConnectorAPI(BaseAPI):
                 self.list_once(perf, json_fmt, show_apps)
                 if follow:
                     sleep_time = interval - (time.time() - start)
-
                     if sleep_time > 0:
-                        # [MS] switching to event sleep (mirroring behavior on regular log output)
-                        #time.sleep(sleep_time)
                         stop_event.wait(sleep_time)
                     else:
-                        logging.error(f"The EAA Connector API is slow to respond (could be also a proxy in the middle), holding for {interval} sec.")
-                        # [MS] switching to event sleep (mirroring behavior on regular log output)
-                        #time.sleep(interval)
+                        logging.error(f"The EAA Connector API is slow to respond (could be also a proxy in the middle),"
+                                      f" holding for {interval} sec.")
                         stop_event.wait(sleep_time)
                 else:
                     break
@@ -226,7 +222,7 @@ class ConnectorAPI(BaseAPI):
     def all_apps(self, exp):
         """
         This method is expensive in time so we use `lru_cache decorator`
-        with a size of 1, combined with a functiom argument `exp` that will be 
+        with a size of 1, combined with a functiom argument `exp` that will be
         used as expiration or cache key.
 
         Args:
@@ -237,7 +233,6 @@ class ConnectorAPI(BaseAPI):
         url_params = {'limit': ApplicationAPI.LIMIT_SOFT, 'expand': 'true'}
         search_app = self.get('mgmt-pop/apps', params=url_params)
         return search_app.json()
-
 
     def findappbyconnector(self, connector_moniker):
         """

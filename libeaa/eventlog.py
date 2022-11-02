@@ -180,7 +180,7 @@ class EventLogAPI(common.BaseAPI):
                 logging.debug(f"#{field_pos:02} {field_name:>{debug_padding}}: {field}")
                 output_dict[field_name] = field
                 field_pos += 2
-        logging.debug(f"------ end debug log line -----")
+        logging.debug("------ end debug log line -----")
 
         return output_dict
 

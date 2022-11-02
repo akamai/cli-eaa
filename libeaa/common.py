@@ -245,7 +245,7 @@ class BaseAPI(object):
         Send a GET reques to the API.
         """
         url = urljoin(self._baseurl, url_path)
-        response = self._session.get(url, params=self.build_params(params), timeout=HTTP_REQ_TIMEOUT)   
+        response = self._session.get(url, params=self.build_params(params), timeout=HTTP_REQ_TIMEOUT)
         logging.info("BaseAPI: GET response is HTTP %s" % response.status_code)
         if response.status_code == 401:
             logging.fatal(f"API returned HTTP/401, check your API credentials\n{response.text}")

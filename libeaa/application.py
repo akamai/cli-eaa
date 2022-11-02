@@ -278,9 +278,10 @@ class ApplicationAPI(BaseAPI):
             "name": app_config.get('name'),
             "description": app_config.get('description')
         }
-        # Client based app must be hinted at the first call
+        # Client based app mode must be set (TCP mode is the default otherwise)
         if app_config.get('client_app_mode'):
-            app_config_create["client_app_mode"] = app_config.get('client_app_mode', ApplicationAPI.ClientMode.TCP),
+            app_config_create["client_app_mode"] = \
+                app_config.get('client_app_mode', ApplicationAPI.ClientMode.TCP.value)
         newapp = self.post('mgmt-pop/apps', json=app_config_create)
         logging.info("Create app core: %s %s" % (newapp.status_code, newapp.text))
         if newapp.status_code != 200:
