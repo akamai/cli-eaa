@@ -1,6 +1,20 @@
 #!/usr/bin/env bats
 
-CLI="python3 ${BATS_TEST_DIRNAME}/../bin/akamai-eaa"
+# see https://bats-core.readthedocs.io/
+
+if [ "$SECTION" == "" ]; then
+  SECTION="default"
+fi
+
+CLI="python3 ${BATS_TEST_DIRNAME}/../bin/akamai-eaa --section $SECTION"
+
+setup() {
+  echo "CLI: ${CLI}"
+}
+
+teardown() {
+    echo "Clean up"
+}
 
 @test "version" {
   result="$(${CLI} version)"
@@ -16,6 +30,11 @@ CLI="python3 ${BATS_TEST_DIRNAME}/../bin/akamai-eaa"
 
 @test "Search applications" {
   run ${CLI} search
+  [ "$status" -eq 0 ]
+}
+
+@test "Create a tunnel application" {
+  run bash createapp.bash ${CLI}
   [ "$status" -eq 0 ]
 }
 
@@ -48,3 +67,4 @@ CLI="python3 ${BATS_TEST_DIRNAME}/../bin/akamai-eaa"
   result="$(${CLI} cert)"
   [ "$?" -eq 0 ]
 }
+

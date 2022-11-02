@@ -36,7 +36,7 @@ from akamai.edgegrid import EdgeGridAuth, EdgeRc
 config = EdgeGridConfig({'verbose': False}, 'default')
 
 #: cli-eaa version
-__version__ = '0.5.1'
+__version__ = '0.5.5'
 
 #: HTTP Request Timeout in seconds
 HTTP_REQ_TIMEOUT = 300
@@ -89,6 +89,14 @@ class cli:
     def exit_gracefully(signum, frame):
         logging.info(f"Stop due to SIGTERM(15) or SIGINT(2) signal received: {signum} ")
         cli.stop_event.set()
+
+
+class CLIFatalException(Exception):
+    """
+    When raised, this exception should cause the cli package to exit
+    with a strictly positive error code.
+    """
+    pass
 
 
 class EAALegacyAuth(requests.auth.AuthBase):
@@ -188,7 +196,7 @@ class BaseAPI(object):
         section = config.section
         self.extra_qs = {}
 
-        if api == self.API_Version.Legacy:  # Prior to {OPEN} API
+        if api == self.API_Version.Legacy:  # Prior to {OPEN} API, used for SIEM API only
             self._api_ver = api
             self._content_type_json = {'content-type': 'application/json'}
             self._content_type_form = \
@@ -201,6 +209,10 @@ class BaseAPI(object):
                 edgerc.get(section, 'eaa_api_key'),
                 edgerc.get(section, 'eaa_api_secret')
             )
+            siem_api_adapter = requests.adapters.HTTPAdapter(
+                max_retries=requests.adapters.Retry(total=5, backoff_factor=1, allowed_methods=["GET", "POST"])
+            )
+            self._session.mount("https://", siem_api_adapter)
         else:  # EAA {OPEN} API
             # TODO handle ambiguity when multiple contract ID are in use
             self._baseurl = 'https://%s/crux/v1/' % edgerc.get(section, 'host')
@@ -233,8 +245,11 @@ class BaseAPI(object):
         Send a GET reques to the API.
         """
         url = urljoin(self._baseurl, url_path)
-        response = self._session.get(url, params=self.build_params(params), timeout=HTTP_REQ_TIMEOUT)   
+        response = self._session.get(url, params=self.build_params(params), timeout=HTTP_REQ_TIMEOUT)
         logging.info("BaseAPI: GET response is HTTP %s" % response.status_code)
+        if response.status_code == 401:
+            logging.fatal(f"API returned HTTP/401, check your API credentials\n{response.text}")
+            cli.exit(401)
         if response.status_code != requests.status_codes.codes.ok:
             logging.info("BaseAPI: GET response body: %s" % response.text)
         return response
@@ -251,7 +266,7 @@ class BaseAPI(object):
 
     def put(self, url_path, json=None, params=None):
         url = urljoin(self._baseurl, url_path)
-        logging.info("API URL: %s" % url)
+        logging.info("[PUT] API URL: %s" % url)
         response = self._session.put(url, json=json, params=self.build_params(params), timeout=HTTP_REQ_TIMEOUT)
         logging.info("BaseAPI: PUT response is HTTP %s" % response.status_code)
         if response.status_code != 200:

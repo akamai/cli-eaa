@@ -35,7 +35,7 @@ from urllib.parse import parse_qsl
 import os
 
 # cli-eaa
-import _paths
+import _paths  # noqa: F401
 from common import cli, config, BaseAPI, EAAItem, __version__
 from eventlog import EventLogAPI
 from cert import CertificateAPI
