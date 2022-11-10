@@ -275,11 +275,12 @@ if __name__ == "__main__":
         elif config.command in ("connector", "c"):
             c = ConnectorAPI(config)
             perf = hasattr(config, 'perf') and config.perf
+            update = hasattr(config, 'update') and config.update
             if config.action == "swap":
                 c.swap(config.connector_id, config.new_connector_id, config.dryrun)
             elif config.action == "apps":
                 con_moniker = EAAItem(config.connector_id)
-                c.list_apps(con_moniker, perf=perf)
+                c.list_apps(con_moniker, perf=perf, update=update)
             else:
                 # if command is "akamai eaa connector" we default to "list"
                 # Unless the long form "akamai eaa connector list" is used
@@ -288,7 +289,7 @@ if __name__ == "__main__":
                 show_apps = hasattr(config, 'showapps') and config.showapps
                 tail = hasattr(config, 'tail') and config.tail
                 interval = hasattr(config, 'interval') and config.interval
-                c.list(perf, json, show_apps, tail, interval, cli.stop_event)
+                c.list(perf, update, json, show_apps, tail, interval, cli.stop_event)
         elif config.command in ("certificate", "cert"):
             c = CertificateAPI(config)
             if config.action is None or config.action == "list" or config.certificate_id is None:

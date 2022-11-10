@@ -82,6 +82,7 @@ class ConnectorAPI(BaseAPI):
         except Exception:
             logging.exception("Error during fetching connector performance health.")
 
+
     def perf_apps(self, connector_id):
         """
         Fetch app usage for a connector
@@ -99,7 +100,8 @@ class ConnectorAPI(BaseAPI):
                     perf_by_host[perf_by_app.get('app_name')] = perf_by_app.get('histogram_data')[-1]
         return perf_by_host
 
-    def list_once(self, perf=False, json_fmt=False, show_apps=False):
+
+    def list_once(self, perf=False, update=False, json_fmt=False, show_apps=False):
         """
         Display the list of EAA connectors as comma separated CSV or JSON
         TODO: refactor this method, too long
@@ -120,6 +122,10 @@ class ConnectorAPI(BaseAPI):
                 perf_res_list = p.map(self.perf_system, [c.get('uuid_url') for c in connectors.get('objects', [])])
             perf_res = dict(perf_res_list)
             signal.signal(signal.SIGTERM, cli.exit_gracefully)
+
+        if update:
+            header += ",last_upgrade_success_date,agent_upgrade_enabled,os_upgrades_up_to_date,pending_os_updates"
+            format_line += ",{last_upgrade_success_date},{agent_upgrade_enabled},{os_upgrades_up_to_date},{pending_os_updates}"
 
         if not json_fmt:
             cli.header(header)
@@ -153,6 +159,15 @@ class ConnectorAPI(BaseAPI):
                     "dialout_idle": perf_latest.get('dialout_idle') or ConnectorAPI.NODATA_JSON,
                     "dialout_active": perf_latest.get('active_dialout_count') or ConnectorAPI.NODATA_JSON
                 })
+
+            if update:
+                data.update({
+                    "last_upgrade_success_date": c.get('last_upgrade_success_date'),
+                    "agent_upgrade_enabled": c.get('agent_upgrade_enabled'),
+                    "os_upgrades_up_to_date": c.get('os_upgrades_up_to_date'),
+                    "pending_os_updates": c.get('pending_os_updates')
+                })
+
             # Help SIEM with the mapping connector <-> apps
             if show_apps:
                 apps = []
@@ -177,20 +192,25 @@ class ConnectorAPI(BaseAPI):
                     network=perf_latest.get('network_traffic_mbps') or ConnectorAPI.NODATA,
                     dialout_total=perf_latest.get('dialout_total') or ConnectorAPI.NODATA,
                     dialout_idle=perf_latest.get('dialout_idle') or ConnectorAPI.NODATA,
-                    dialout_active=perf_latest.get('active_dialout_count') or ConnectorAPI.NODATA
+                    dialout_active=perf_latest.get('active_dialout_count') or ConnectorAPI.NODATA,
+                    last_upgrade_success_date=c.get('last_upgrade_success_date'),
+                    agent_upgrade_enabled=c.get('agent_upgrade_enabled'),
+                    os_upgrades_up_to_date=c.get('os_upgrades_up_to_date'),
+                    pending_os_updates=c.get('pending_os_updates')
                 ))
             else:
                 cli.print(json.dumps(data))
         if not json_fmt:
             cli.footer("Total %s connector(s)" % total_con)
 
-    def list(self, perf, json_fmt, show_apps=False, follow=False, interval=300, stop_event=None):
+    def list(self, perf, update, json_fmt, show_apps=False, follow=False, interval=300, stop_event=None):
         """
         List the connector and their attributes and status
         The default output is CSV
 
         Args:
             perf (bool):        Add performance data (cpu, mem, disk, dialout)
+            update (bool):      Add update data
             json_fmt (bool):    Output as JSON instead of CSV
             show_apps (bool):   Add an extra field 'apps' as array of application UUID
             follow (bool):      Never stop until Control+C or SIGTERM is received
@@ -201,7 +221,7 @@ class ConnectorAPI(BaseAPI):
         while True or (stop_event and not stop_event.is_set()):
             try:
                 start = time.time()
-                self.list_once(perf, json_fmt, show_apps)
+                self.list_once(perf, update, json_fmt, show_apps)
                 if follow:
                     sleep_time = interval - (time.time() - start)
                     if sleep_time > 0:

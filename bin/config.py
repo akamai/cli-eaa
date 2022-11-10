@@ -143,6 +143,7 @@ class EdgeGridConfig():
 
         list_parser = subsub.add_parser("list", help="List all connectors")
         list_parser.add_argument('--perf', default=False, action="store_true", help='Show performance metrics')
+        list_parser.add_argument('--update', default=False, action="store_true", help='Show connector update status')
         list_parser.add_argument('--json', '-j', default=False, action="store_true", help='View as JSON')
         list_parser.add_argument('--showapps', '-a', default=False, action="store_true",
                                  help='Response contains the applications running on the connector (JSON only)')
