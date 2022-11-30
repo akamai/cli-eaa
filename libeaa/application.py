@@ -304,7 +304,7 @@ class ApplicationAPI(BaseAPI):
         self.create_auth(app_moniker, app_config)
 
         # --- Access Control rules
-        self.create_acl(app_moniker, app_config)
+        self.set_acl(app_moniker, app_config)
 
         # --- Other services
         # TODO: implement
@@ -315,7 +315,7 @@ class ApplicationAPI(BaseAPI):
         # At the end we reload the app entirely
         cli.print(json.dumps(self.load(app_moniker)))
 
-    def create_acl(self, app_moniker, app_config):
+    def set_acl(self, app_moniker, app_config):
         """
         Save ACL rules into a newly created EAA application
         :param app_moniker: identifier of the newly created app
@@ -431,14 +431,17 @@ class ApplicationAPI(BaseAPI):
         """
         Update an existing EAA application configuration.
         """
+        # App core property update
         update = self.put(
             'mgmt-pop/apps/{applicationId}'.format(applicationId=app_moniker.uuid),
             json=app_config
         )
-        logging.info("Update app response: %s" % update.status_code)
-        logging.info("Update app response: %s" % update.text)
+        logging.info(f"Update core app HTTP/{update.status_code}: {update.text}")
         if update.status_code != 200:
             cli.exit(2)
+
+        # Update Access Control Rules
+        self.set_acl(app_moniker, app_config)
 
     def attach_connectors(self, app_moniker, connectors):
         """
