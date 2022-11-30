@@ -15,6 +15,10 @@
 """
 Common class / function for cli-eaa
 """
+
+#: cli-eaa version [PEP 8]
+__version__ = '0.5.6-dev'
+
 import sys
 from threading import Event
 import logging
@@ -34,9 +38,6 @@ from akamai.edgegrid import EdgeGridAuth, EdgeRc
 # If all parameters are set already, use them.  Otherwise
 # use the config
 config = EdgeGridConfig({'verbose': False}, 'default')
-
-#: cli-eaa version
-__version__ = '0.5.5'
 
 #: HTTP Request Timeout in seconds
 HTTP_REQ_TIMEOUT = 300
@@ -224,15 +225,18 @@ class BaseAPI(object):
                 self.extra_qs.update(parse_qs(scanned_extra_qs))
 
         if self._session:
-            self._session.headers.update({'User-Agent': f"{self._config.ua_prefix} cli-eaa/{__version__}"})
+            self._session.headers.update({'User-Agent': self.user_agent()})
             if config.proxy:
                 logging.info("Set proxy to %s" % config.proxy)
                 self._session.proxies['https'] = 'http://%s' % config.proxy
 
         logging.info("Initialized with base_url %s" % self._baseurl)
 
+    def user_agent(self):
+        return f"{self._config.ua_prefix} cli-eaa/{__version__}"
+
     def build_params(self, params=None):
-        final_params = {}
+        final_params = {"ua": self.user_agent()}
         final_params.update(self.extra_qs)
         if hasattr(self._config, 'contract_id') and self._config.contract_id:
             final_params.update({'contractId': self._config.contract_id})
@@ -240,15 +244,25 @@ class BaseAPI(object):
             final_params.update(params)
         return final_params
 
+    @staticmethod
+    def log_response_summary(response):
+        """
+        Log information about the API request/response to help with troubleshooting.
+        """
+        logging.info(f"BaseAPI: {response.url} {response.request.method} response is HTTP/{response.status_code}, "
+                     f"x-trace-id: {response.headers.get('x-trace-id')}, "
+                     f"x-ids-session-id: {response.headers.get('x-ids-session-id')}")
+
     def get(self, url_path, params=None):
         """
         Send a GET reques to the API.
         """
         url = urljoin(self._baseurl, url_path)
         response = self._session.get(url, params=self.build_params(params), timeout=HTTP_REQ_TIMEOUT)
-        logging.info("BaseAPI: GET response is HTTP %s" % response.status_code)
+        BaseAPI.log_response_summary(response)
         if response.status_code == 401:
             logging.fatal(f"API returned HTTP/401, check your API credentials\n{response.text}")
+            logging.fatal(f"EdgeRC Section: {config.section}")
             cli.exit(401)
         if response.status_code != requests.status_codes.codes.ok:
             logging.info("BaseAPI: GET response body: %s" % response.text)
@@ -259,7 +273,7 @@ class BaseAPI(object):
         logging.info("API URL: %s" % url)
         response = self._session.post(url, json=json, params=self.build_params(params),
                                       timeout=HTTP_REQ_TIMEOUT, allow_redirects=allow_redirects)
-        logging.info("BaseAPI: POST response is HTTP %s" % response.status_code)
+        BaseAPI.log_response_summary(response)
         if response.status_code != 200:
             logging.info("BaseAPI: POST response body: %s" % response.text)
         return response
@@ -268,7 +282,7 @@ class BaseAPI(object):
         url = urljoin(self._baseurl, url_path)
         logging.info("[PUT] API URL: %s" % url)
         response = self._session.put(url, json=json, params=self.build_params(params), timeout=HTTP_REQ_TIMEOUT)
-        logging.info("BaseAPI: PUT response is HTTP %s" % response.status_code)
+        BaseAPI.log_response_summary(response)
         if response.status_code != 200:
             logging.info("BaseAPI: PUT response body: %s" % response.text)
         return response
@@ -277,7 +291,7 @@ class BaseAPI(object):
         url = urljoin(self._baseurl, url_path)
         logging.info("API URL: %s" % url)
         response = self._session.delete(url, json=json, params=self.build_params(params), timeout=HTTP_REQ_TIMEOUT)
-        logging.info("BaseAPI: DELETE response is HTTP %s" % response.status_code)
+        BaseAPI.log_response_summary(response)
         if response.status_code != 200:
             logging.info("BaseAPI: DELETE response body: %s" % response.text)
         return response
