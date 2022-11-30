@@ -180,8 +180,12 @@ class EdgeGridConfig():
                             help=' Location of the credentials file (default is %s)' % os.path.expanduser("~/.edgerc"))
         parser.add_argument('--proxy', '-p', default='', help=''' HTTP/S Proxy Host/IP and port number,
                                                                   do not use prefix (e.g. 10.0.0.1:8888)''')
-        parser.add_argument('--section', '-c', default='default', metavar='credentials_file_section', action='store',
+        parser.add_argument('--section', '-c', default=os.environ.get('AKAMAI_EDGERC_SECTION', 'default'),
+                            metavar='credentials_file_section', action='store',
                             help=' Credentials file Section\'s name to use (\'default\' if not specified).')
+        parser.add_argument('--accountkey', '--account-key', default=os.environ.get('AKAMAI_EDGERC_ACCOUNT_KEY', None),
+                            help=' Account switch key')
+
         parser.add_argument('--verbose', '-v', default=False, action='store_true', help=' Verbose mode')
         parser.add_argument('--logfile', default=None, help=' Log file')
         parser.add_argument('--user-agent-prefix', dest='ua_prefix', default='Akamai-CLI', help=argparse.SUPPRESS)
