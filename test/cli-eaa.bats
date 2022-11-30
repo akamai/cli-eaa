@@ -2,11 +2,7 @@
 
 # see https://bats-core.readthedocs.io/
 
-if [ "$SECTION" == "" ]; then
-  SECTION="default"
-fi
-
-CLI="python3 ${BATS_TEST_DIRNAME}/../bin/akamai-eaa --section $SECTION"
+CLI="python3 ${BATS_TEST_DIRNAME}/../bin/akamai-eaa"
 
 setup() {
   echo "CLI: ${CLI}"
@@ -16,7 +12,7 @@ teardown() {
     echo "Clean up"
 }
 
-@test "version" {
+@test "cli-eaa version" {
   result="$(${CLI} version)"
   echo $result
   [ "$?" -eq 0 ]
@@ -65,6 +61,11 @@ teardown() {
 
 @test "Certificates" {
   result="$(${CLI} cert)"
+  [ "$?" -eq 0 ]
+}
+
+@test "Account informations" {
+  result="$(${CLI} info)"
   [ "$?" -eq 0 ]
 }
 

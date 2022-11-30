@@ -204,7 +204,7 @@ class EventLogAPI(common.BaseAPI):
                 msg = (f"Invalid API response content-type: "
                        f"{resp.headers['content-type']}, expecting '{RESPONSE_CONTENTTYPE}'. "
                        f"URL: {resp.url}. "
-                       f"Check your API host/credentials.")
+                       f"Check your API host/credentials in section [{config.section}].")
                 raise CLIFatalException(msg)
             if resp.status_code != 200:
                 msg = "Invalid API response status code: %s" % resp.status_code
