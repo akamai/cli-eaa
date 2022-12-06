@@ -1,6 +1,8 @@
 #!/usr/bin/env bats
 
 # see https://bats-core.readthedocs.io/
+# Make sure you set the AKAMAI_EDGERC_SECTION environment
+# Before running the script
 
 CLI="python3 ${BATS_TEST_DIRNAME}/../bin/akamai-eaa"
 
@@ -69,3 +71,18 @@ teardown() {
   [ "$?" -eq 0 ]
 }
 
+@test "Create and patch app with JQ" {
+  result="$(${BATS_TEST_DIRNAME}/createapp.bash)"
+  [ "$?" -eq 0 ]
+}
+
+
+@test "Directory list (csv)" {
+  result="$(${CLI} dir list)"
+  [ "$?" -eq 0 ]
+}
+
+@test "Directory list (JSON)" {
+  result="$(${CLI} dir list --json|jq .)"
+  [ "$?" -eq 0 ]
+}
