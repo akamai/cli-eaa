@@ -333,7 +333,7 @@ class ConnectorAPI(BaseAPI):
         app_api = ApplicationAPI(self._config)
         app_processed = 0
         cli.header("#Operation,connector-id,connector-name,app-id,app-name")
-        for app_using_old_con, app_name, app_host in self.findappbyconnector(old_con):
+        for app_using_old_con, app_name, app_host, dialout_ver in self.findappbyconnector(old_con):
             if dryrun:
                 cli.print("DRYRUN +,%s,%s,%s,%s" % (
                     new_con, infos_by_conid[new_con].get('name'),
