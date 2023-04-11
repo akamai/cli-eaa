@@ -176,15 +176,18 @@ class EdgeGridConfig():
         parser.add_argument('--batch', '-b', default=False, action='store_true',
                             help='Batch mode, remove the extra header/footer in lists.')
         parser.add_argument('--debug', '-d', default=False, action='count', help=' Debug mode (log HTTP headers)')
-        parser.add_argument('--edgerc', '-e', default='~/.edgerc', metavar='credentials_file',
-                            help=' Location of the credentials file (default is %s)' % os.path.expanduser("~/.edgerc"))
+        parser.add_argument('--edgerc', '-e',
+                            default=os.environ.get('AKAMAI_EDGERC', '~/.edgerc'),
+                            metavar='credentials_file',
+                            help=' Credentials file, [$AKAMAI_EDGERC], then %s)' %
+                            os.path.expanduser("~/.edgerc"))
         parser.add_argument('--proxy', '-p', default='', help=''' HTTP/S Proxy Host/IP and port number,
                                                                   do not use prefix (e.g. 10.0.0.1:8888)''')
         parser.add_argument('--section', '-c', default=os.environ.get('AKAMAI_EDGERC_SECTION', 'default'),
                             metavar='credentials_file_section', action='store',
-                            help=' Credentials file Section\'s name to use (\'default\' if not specified).')
+                            help=' Credentials file Section\'s name to use [$AKAMAI_EDGERC_SECTION]')
         parser.add_argument('--accountkey', '--account-key', default=os.environ.get('AKAMAI_EDGERC_ACCOUNT_KEY', None),
-                            help=' Account switch key')
+                            help=' Account Switch Key [$AKAMAI_EDGERC_ACCOUNT_KEY]')
 
         parser.add_argument('--verbose', '-v', default=False, action='store_true', help=' Verbose mode')
         parser.add_argument('--logfile', default=None, help=' Log file')
