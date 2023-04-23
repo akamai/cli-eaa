@@ -109,8 +109,10 @@ class EdgeGridConfig():
         deploy_parser = subsub.add_parser("deploy", help="Deploy the application")
         deploy_parser.add_argument("--comment", "-c", nargs="?", default="Deploy from cli-eaa",
                                    help="Comment for the deployment")
-        subsub.add_parser("update", help="Update an existing application")
-        subsub.add_parser("create", help="Create a new application")
+        update_parser = subsub.add_parser("update", help="Update an existing application")
+        update_parser.add_argument('--var', dest="variables", action='append', nargs='+')
+        create_parser = subsub.add_parser("create", help="Create a new application")
+        create_parser.add_argument('--var', dest="variables", action='append', nargs='+')
         subsub.add_parser("delete", help="Delete an application")
         subsub.add_parser("view", help="Dump application configuration (JSON)")
         subsub.add_parser("viewgroups", help="Dump application configuration (JSON)")

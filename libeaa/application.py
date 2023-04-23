@@ -256,7 +256,7 @@ class ApplicationAPI(BaseAPI):
         t.globals['AppDomainType'] = ApplicationAPI.Domain
         t.globals['cli_cloudzone'] = self.cloudzone_lookup
         t.globals['cli_certificate'] = self.certificate_lookup
-        output = t.render()
+        output = t.render(**dict(self._config.variables))
         logger.debug("JSON Post-Template Render:")
         for lineno, line in enumerate(output.splitlines()):
             logger.debug("{:4d}> {}".format(lineno+1, line))
@@ -424,10 +424,11 @@ class ApplicationAPI(BaseAPI):
         else:
             logger.debug("No URL path-based policies set")
 
-    def update(self, app_moniker, app_config):
+    def update(self, app_moniker, raw_app_config):
         """
         Update an existing EAA application configuration.
         """
+        app_config = json.loads(self.parse_template(raw_app_config))
         # App core property update
         update = self.put(
             'mgmt-pop/apps/{applicationId}'.format(applicationId=app_moniker.uuid),
