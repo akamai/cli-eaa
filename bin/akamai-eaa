@@ -73,7 +73,7 @@ class SearchAPI(BaseAPI):
         app_scanned = 0
 
         # CLI ouput header
-        cli.print('#app_id,type,name,host,cname,cert_id,status,reachable')
+        cli.header('#app_id,type,name,host,cname,cert_id,status,reachable')
         stats = self.process_page(data, search_pattern)
         app_scanned += stats[0]
         app_found += stats[1]
