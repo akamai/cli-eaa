@@ -116,7 +116,7 @@ class ApplicationAPI(BaseAPI):
             if len(applications) > 1:
                 raise Exception("Batch operation not supported")
             app = applications[0]
-            new_config = json.load(sys.stdin)
+            new_config = sys.stdin.read()
             self.update(app, new_config)
             cli.print("Configuration for application %s has been updated." % app)
         elif config.action == "delete":
