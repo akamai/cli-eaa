@@ -116,7 +116,7 @@ class ApplicationAPI(BaseAPI):
             if len(applications) > 1:
                 raise Exception("Batch operation not supported")
             app = applications[0]
-            new_config = json.load(sys.stdin)
+            new_config = sys.stdin.read()
             self.update(app, new_config)
             cli.print("Configuration for application %s has been updated." % app)
         elif config.action == "delete":
@@ -256,7 +256,7 @@ class ApplicationAPI(BaseAPI):
         t.globals['AppDomainType'] = ApplicationAPI.Domain
         t.globals['cli_cloudzone'] = self.cloudzone_lookup
         t.globals['cli_certificate'] = self.certificate_lookup
-        output = t.render()
+        output = t.render(**dict(self._config.variables))
         logger.debug("JSON Post-Template Render:")
         for lineno, line in enumerate(output.splitlines()):
             logger.debug("{:4d}> {}".format(lineno+1, line))
@@ -424,10 +424,18 @@ class ApplicationAPI(BaseAPI):
         else:
             logger.debug("No URL path-based policies set")
 
-    def update(self, app_moniker, app_config):
+    def update(self, app_moniker, raw_app_config):
         """
         Update an existing EAA application configuration.
         """
+        postjj_app_config = self.parse_template(raw_app_config)
+        try:
+            app_config = json.loads(postjj_app_config)
+        except json.decoder.JSONDecodeError as jde:
+            for lineno, line in enumerate(postjj_app_config.splitlines()):
+                logger.error("{:4d}> {}".format(lineno+1, line))
+            raise jde
+
         # App core property update
         update = self.put(
             'mgmt-pop/apps/{applicationId}'.format(applicationId=app_moniker.uuid),
