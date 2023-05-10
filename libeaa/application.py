@@ -428,7 +428,14 @@ class ApplicationAPI(BaseAPI):
         """
         Update an existing EAA application configuration.
         """
-        app_config = json.loads(self.parse_template(raw_app_config))
+        postjj_app_config = self.parse_template(raw_app_config)
+        try:
+            app_config = json.loads(postjj_app_config)
+        except json.decoder.JSONDecodeError as jde:
+            for lineno, line in enumerate(postjj_app_config.splitlines()):
+                logger.error("{:4d}> {}".format(lineno+1, line))
+            raise jde
+
         # App core property update
         update = self.put(
             'mgmt-pop/apps/{applicationId}'.format(applicationId=app_moniker.uuid),
