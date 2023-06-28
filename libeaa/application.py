@@ -132,7 +132,7 @@ class ApplicationAPI(BaseAPI):
             for a in applications:
                 self.loadgroups(a)
         elif config.action == 'delgroup':
-            for ag in appgroups:
+            for ag in applications:
                 self.delgroup(ag)
         elif config.action in ('attach', 'detach'):
             for a in applications:
