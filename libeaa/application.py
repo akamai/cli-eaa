@@ -132,8 +132,15 @@ class ApplicationAPI(BaseAPI):
             for a in applications:
                 self.loadgroups(a)
         elif config.action == 'delgroup':
-            for ag in applications:
-                self.delgroup(ag)
+            for a in applications:
+                self.delgroup(a)
+        elif config.action == 'addgroup':
+            for a in applications:
+                appgrps = []
+                for ag in set(config.appgrp_id):
+                    appgrp_moniker = EAAItem(ag)
+                    appgrps.append(appgrp_moniker.uuid)
+                self.addgroup(a, appgrps)
         elif config.action in ('attach', 'detach'):
             for a in applications:
                 connectors = []
@@ -229,6 +236,13 @@ class ApplicationAPI(BaseAPI):
                              json={'deleted_objects': [appgroup_moniker.uuid]})
         if deletion.status_code == 200:
             cli.print("Association %s deleted." % appgroup_moniker)
+
+    def addgroup(self, app_moniker, appgrps):
+        cli.print("Add App-group(s) %s to %s ..." % (', '.join(appgrps), app_moniker))
+        addition = self.post('mgmt-pop/appgroups',
+                              json = {"data":[{"apps":[app_moniker.uuid],"groups": [{"uuid_url": "" + gi + "","enable_mfa":"inherit"} for gi in appgrps]}]})
+        if addition.status_code == 200:
+            cli.print("Association %s added." % (', '.join(appgrps)))
 
     def cloudzone_lookup(self, name):
         """Lookup a cloud zone UUID based on it's name."""
