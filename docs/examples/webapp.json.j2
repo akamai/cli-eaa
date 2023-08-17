@@ -1,6 +1,6 @@
 {
     "eaa_cli_comment": [
-        "This is an example of JSON template to create an EAA web application "
+        "This is an example of JSON template to create an EAA web application ",
         "with a single command line using Akamai CLI and EAA package.",
 	    "To create the app, use the following command:",
         "cat webapp.json.j2 | akamai eaa app - create",
@@ -21,29 +21,8 @@
     "servers": [
         {"origin_host": "10.0.2.3", "orig_tls": "false", "origin_port": 443, "origin_protocol": "https"}
     ],
-    "agents": [
-        {"name": "my-connector-1", "uuid_url": "connector-1-uuid"},
-        {"name": "my-connector-1", "uuid_url": "connector-2-uuid"}
-    ],
-    "idp": {
-    	"idp_id": "idp-1-uuid"
-    },
-    "directories": [
-       {
-          "name": "AD Domain AkamaiDemo.net (global)",
-          "uuid_url": "directory-uuid"
-       }
-    ],
-    "groups": [
-        {
-          "name": "Administrators",
-          "enable_mfa": "inherit",
-          "uuid_url": "group-admin-uuid"
-        },
-        {
-          "name": "Support",
-          "enable_mfa": "inherit",
-          "uuid_url": "group-support-uuid"
-        }
-    ]
+    "agents": {% include 'includes/akdemo-amer-2maincon.json' %},
+    "idp": {% include 'includes/akdemo-idp.json' %},
+    "directories": {% include 'includes/akdemo-directory.json' %},
+    "groups": {% include 'includes/akdemo-groups-default.json' %}
 }
