@@ -115,8 +115,11 @@ class EdgeGridConfig():
         create_parser.add_argument('--var', dest="variables", action='append', nargs='+')
         subsub.add_parser("delete", help="Delete an application")
         subsub.add_parser("view", help="Dump application configuration (JSON)")
-        subsub.add_parser("viewgroups", help="Dump application configuration (JSON)")
+        subsub.add_parser("viewgroups", help="View groups associated to application")
         subsub.add_parser("delgroup", help="Remove group from application, appgroup ID must provided")
+        addgrp_parser = subsub.add_parser("addgroup", help="Add group(s) to application, app ID and appgroup ID must provided")
+        addgrp_parser.add_argument(dest="appgrp_id", nargs="+",
+                                   help='Add group(s) to application')
 
         cert_parser = subparsers.add_parser('certificate', aliases=["cert"], help='Manage EAA Certificates')
         cert_parser.add_argument(dest='certificate_id', nargs="?", default=None,
