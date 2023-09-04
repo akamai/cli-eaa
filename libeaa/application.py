@@ -405,14 +405,15 @@ class ApplicationAPI(BaseAPI):
         # Directory
         # The view operation gives us the directories in directories[] -> uuid_url
         scanned_directories = app_config.get('directories', [])
-        app_directories_payload = {"data": [{"apps": [app_moniker.uuid], "directories": scanned_directories}]}
-        app_directories_resp = self.post('mgmt-pop/appdirectories', json=app_directories_payload)
-        logger.info(
-            "App directories association response: %s %s" %
-            (app_directories_resp.status_code, app_directories_resp.text)
-        )
-        if app_directories_resp.status_code != 200:
-            cli.exit(2)
+        if len(scanned_directories) > 0:
+            app_directories_payload = {"data": [{"apps": [app_moniker.uuid], "directories": scanned_directories}]}
+            app_directories_resp = self.post('mgmt-pop/appdirectories', json=app_directories_payload)
+            logger.info(
+                "App directories association response: %s %s" %
+                (app_directories_resp.status_code, app_directories_resp.text)
+            )
+            if app_directories_resp.status_code != 200:
+                cli.exit(2)
 
         # Groups
         self.set_appgroups(app_moniker, app_config)
