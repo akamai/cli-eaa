@@ -256,7 +256,7 @@ if __name__ == "__main__":
                 if hasattr(config, 'directory_id'):
                     directory_id = config.directory_id
                 d = DirectoryAPI(config, directory_id)
-                d.list_directories()
+                d.list_directories(stop_event=cli.stop_event)
             else:
                 d = DirectoryAPI(config, config.directory_id)
                 if config.action == "sync":

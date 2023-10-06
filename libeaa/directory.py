@@ -118,7 +118,37 @@ class DirectoryAPI(BaseAPI):
                 ln=u.get('last_name')
             ))
 
-    def list_directories(self):
+    def list_directories(self, interval=10, stop_event=None):
+        """
+        List directories configured in the tenant.
+
+        Args:
+            follow (bool):      Never stop until Control+C or SIGTERM is received
+            interval (float):   Interval in seconds between pulling the API, default is 5 minutes (300s)
+            stop_event (Event): Main program stop event allowing the function
+                                to stop at the earliest possible
+        """
+        while True or (stop_event and not stop_event.is_set()):
+            try:
+                start = time.time()
+                self.list_directories_once()
+                if self._config.tail:
+                    sleep_time = interval - (time.time() - start)
+                    if sleep_time > 0:
+                        stop_event.wait(sleep_time)
+                    else:
+                        logging.error(f"The EAA Directory API is slow to respond (could be also a proxy in the middle),"
+                                      f" holding for {sleep_time} sec.")
+                        stop_event.wait(sleep_time)
+                else:
+                    break
+            except Exception as e:
+                if follow:
+                    logging.error(f"General exception {e}, since we are in follow mode (--tail), we keep going.")
+                else:
+                    raise
+
+    def list_directories_once(self):
         if self._directory_id:
             if self._config.users:
                 if self._config.search_pattern and not self._config.batch:
@@ -136,12 +166,13 @@ class DirectoryAPI(BaseAPI):
             if not self._config.batch and not self._config.json:
                 cli.header("#dir_id,dir_name,status,user_count,group_count")
             total_dir = 0
+            dt = datetime.datetime.now(tz=datetime.timezone.utc)
             for total_dir, d in enumerate(resj.get("objects"), start=1):
                 output = dict()
                 output["dir_id"] = EAAItem.Type.Directory.scheme + d.get("uuid_url")
                 output["service"] = Service(d.get("service")).name
-                output["dt"] = datetime.datetime.utcnow().isoformat()
                 output["name"] = d.get("name")
+                output["datetime"] = dt.isoformat()
                 output["status"] = d.get("status")
                 output["connector_count"] = len(d.get("agents"))
                 output["directory_status"] = Status(d.get("directory_status")).name
@@ -149,6 +180,7 @@ class DirectoryAPI(BaseAPI):
                 output["user_count"] = d.get("group_count")
                 output["last_sync"] = d.get("last_sync")
                 output["sync_state"] = SyncState(d.get("sync_state")).name
+                output["conf_state"] = d.get("conf_state")
 
                 if self._config.json:
                     cli.print(json.dumps(output))
