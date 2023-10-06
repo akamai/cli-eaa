@@ -24,6 +24,8 @@ from common import cli, BaseAPI, EAAInvalidMoniker, EAAItem, config
 # 3rd party
 from jinja2 import Environment, FileSystemLoader
 
+logger = logging.getLogger(__name__)
+
 
 class ApplicationAPI(BaseAPI):
     """
@@ -87,7 +89,7 @@ class ApplicationAPI(BaseAPI):
                 for line in sys.stdin:
                     scanned_items = line.split(',')
                     if len(scanned_items) == 0:
-                        logging.warning("Cannot parse line: %s" % line)
+                        logger.warning("Cannot parse line: %s" % line)
                         continue
                     try:
                         scanned_obj = EAAItem(scanned_items[0])
@@ -96,11 +98,11 @@ class ApplicationAPI(BaseAPI):
                         elif scanned_obj.objtype == EAAItem.Type.ApplicationGroupAssociation:
                             appgroups.append(scanned_obj)
                     except EAAInvalidMoniker:
-                        logging.warning("Invalid application moniker: %s" % scanned_items[0])
+                        logger.warning("Invalid application moniker: %s" % scanned_items[0])
         else:
-            logging.info("Single app %s" % config.application_id)
+            logger.info("Single app %s" % config.application_id)
             applications.append(EAAItem(config.application_id))
-            logging.info("%s" % EAAItem(config.application_id))
+            logger.info("%s" % EAAItem(config.application_id))
 
         if config.action == "deploy":
             for a in applications:
@@ -114,7 +116,7 @@ class ApplicationAPI(BaseAPI):
             if len(applications) > 1:
                 raise Exception("Batch operation not supported")
             app = applications[0]
-            new_config = json.load(sys.stdin)
+            new_config = sys.stdin.read()
             self.update(app, new_config)
             cli.print("Configuration for application %s has been updated." % app)
         elif config.action == "delete":
@@ -130,8 +132,15 @@ class ApplicationAPI(BaseAPI):
             for a in applications:
                 self.loadgroups(a)
         elif config.action == 'delgroup':
-            for ag in appgroups:
-                self.delgroup(ag)
+            for a in applications:
+                self.delgroup(a)
+        elif config.action == 'addgroup':
+            for a in applications:
+                appgrps = []
+                for ag in set(config.appgrp_id):
+                    appgrp_moniker = EAAItem(ag)
+                    appgrps.append(appgrp_moniker.uuid)
+                self.addgroup(a, appgrps)
         elif config.action in ('attach', 'detach'):
             for a in applications:
                 connectors = []
@@ -228,6 +237,13 @@ class ApplicationAPI(BaseAPI):
         if deletion.status_code == 200:
             cli.print("Association %s deleted." % appgroup_moniker)
 
+    def addgroup(self, app_moniker, appgrps):
+        cli.print("Add App-group(s) %s to %s ..." % (', '.join(appgrps), app_moniker))
+        addition = self.post('mgmt-pop/appgroups',
+                              json = {"data":[{"apps":[app_moniker.uuid],"groups": [{"uuid_url": "" + gi + "","enable_mfa":"inherit"} for gi in appgrps]}]})
+        if addition.status_code == 200:
+            cli.print("Association %s added." % (', '.join(appgrps)))
+
     def cloudzone_lookup(self, name):
         """Lookup a cloud zone UUID based on it's name."""
         pops = self.get('mgmt-pop/pops?shared=true')
@@ -247,17 +263,17 @@ class ApplicationAPI(BaseAPI):
         """
         Parse the EAA configuration as JINJA2 template
         """
-        logging.debug("Jinja template loader base directory: %s" % os.getcwd())
+        logger.debug("Jinja template loader base directory: %s" % os.getcwd())
         t = Environment(loader=FileSystemLoader(os.getcwd())).from_string(raw_config)
         t.globals['AppProfile'] = ApplicationAPI.Profile
         t.globals['AppType'] = ApplicationAPI.Type
         t.globals['AppDomainType'] = ApplicationAPI.Domain
         t.globals['cli_cloudzone'] = self.cloudzone_lookup
         t.globals['cli_certificate'] = self.certificate_lookup
-        output = t.render()
-        logging.debug("JSON Post-Template Render:")
+        output = t.render(**dict(self._config.variables))
+        logger.debug("JSON Post-Template Render:")
         for lineno, line in enumerate(output.splitlines()):
-            logging.debug("{:4d}> {}".format(lineno+1, line))
+            logger.debug("{:4d}> {}".format(lineno+1, line))
         return output
 
     def create(self, raw_app_config):
@@ -271,7 +287,7 @@ class ApplicationAPI(BaseAPI):
               We should do the same here
         """
         app_config = json.loads(self.parse_template(raw_app_config))
-        logging.debug("Post Jinja parsing:\n%s" % json.dumps(app_config))
+        logger.debug("Post Jinja parsing:\n%s" % json.dumps(app_config))
         app_config_create = {
             "app_profile": app_config.get('app_profile'),
             "app_type": app_config.get('app_type', ApplicationAPI.Type.Hosted.value),
@@ -283,13 +299,13 @@ class ApplicationAPI(BaseAPI):
             app_config_create["client_app_mode"] = \
                 app_config.get('client_app_mode', ApplicationAPI.ClientMode.TCP.value)
         newapp = self.post('mgmt-pop/apps', json=app_config_create)
-        logging.info("Create app core: %s %s" % (newapp.status_code, newapp.text))
+        logger.info("Create app core: %s %s" % (newapp.status_code, newapp.text))
         if newapp.status_code != 200:
             cli.exit(2)
         newapp_config = newapp.json()
-        logging.info("New app JSON:\n%s" % newapp.text)
+        logger.info("New app JSON:\n%s" % newapp.text)
         app_moniker = EAAItem("app://{}".format(newapp_config.get('uuid_url')))
-        logging.info("UUID of the newapp: %s" % app_moniker)
+        logger.info("UUID of the newapp: %s" % app_moniker)
 
         # Now we push everything else as a PUT (update)
         self.put('mgmt-pop/apps/{applicationId}'.format(applicationId=app_moniker.uuid), json=app_config)
@@ -322,17 +338,17 @@ class ApplicationAPI(BaseAPI):
         :app_config: details of the configuration to save
         """
         # UUID for the ACL service in the newly created application
-        logging.debug("Fetch service UUID...")
+        logger.debug("Fetch service UUID...")
         services_resp = self.get('mgmt-pop/apps/{app_uuid}/services'.format(app_uuid=app_moniker.uuid))
         service_uuid = None
-        logging.info(json.dumps(services_resp.json(), indent=4))
+        logger.info(json.dumps(services_resp.json(), indent=4))
         for s in services_resp.json().get('objects', []):
             scanned_service_type = s.get('service', {}).get('service_type')
-            logging.debug("Scanned service_type: %s" % scanned_service_type)
+            logger.debug("Scanned service_type: %s" % scanned_service_type)
             if scanned_service_type == ApplicationAPI.ServiceType.ACL.value:
                 service_uuid = s.get('service', {}).get('uuid_url')
                 break  # Only one service of type ACL
-        logging.debug("Service UUID for the app is %s" % service_uuid)
+        logger.debug("Service UUID for the app is %s" % service_uuid)
 
         if service_uuid:
 
@@ -340,13 +356,13 @@ class ApplicationAPI(BaseAPI):
             service_acl = None
             for s in app_config.get('Services', []):
                 scanned_service_type = s.get('service', {}).get('service_type')
-                logging.info("Scanned service_type: %s" % scanned_service_type)
+                logger.info("Scanned service_type: %s" % scanned_service_type)
                 if scanned_service_type == ApplicationAPI.ServiceType.ACL.value:
                     service_acl = s
                     break  # Only one service of type ACL
 
             if not service_acl:
-                logging.warning("No acl rules defined in the application configuration JSON document, skipping")
+                logger.warning("No acl rules defined in the application configuration JSON document, skipping")
                 return
 
             # Enable the ACL service
@@ -371,7 +387,7 @@ class ApplicationAPI(BaseAPI):
 
         else:
 
-            logging.warning("Unable to find a ACL service in the newly created application %s" % app_moniker)
+            logger.warning("Unable to find a ACL service in the newly created application %s" % app_moniker)
 
     def create_auth(self, app_moniker, app_config):
         """
@@ -384,27 +400,22 @@ class ApplicationAPI(BaseAPI):
         if scanned_idp_uuid:
             idp_app_payload = {"app": app_moniker.uuid, "idp": scanned_idp_uuid}
             idp_app_resp = self.post('mgmt-pop/appidp', json=idp_app_payload)
-            logging.info("IdP-app association response: %s %s" % (idp_app_resp.status_code, idp_app_resp.text))
+            logger.info("IdP-app association response: %s %s" % (idp_app_resp.status_code, idp_app_resp.text))
 
         # Directory
         # The view operation gives us the directories in directories[] -> uuid_url
         scanned_directories = app_config.get('directories', [])
         app_directories_payload = {"data": [{"apps": [app_moniker.uuid], "directories": scanned_directories}]}
         app_directories_resp = self.post('mgmt-pop/appdirectories', json=app_directories_payload)
-        logging.info(
+        logger.info(
             "App directories association response: %s %s" %
             (app_directories_resp.status_code, app_directories_resp.text)
         )
         if app_directories_resp.status_code != 200:
             cli.exit(2)
+
         # Groups
-        if len(app_config.get('groups', [])) > 0:
-            app_groups_payload = {'data': [{'apps': [app_moniker.uuid], 'groups': app_config.get('groups', [])}]}
-            app_groups_resp = self.post('mgmt-pop/appgroups', json=app_groups_payload)
-            if app_groups_resp.status_code != 200:
-                cli.exit(2)
-        else:
-            logging.debug("No group set")
+        self.set_appgroups(app_moniker, app_config)
 
     def create_urlbasedpolicies(self, app_moniker, app_config):
         if len(app_config.get('urllocation', [])) > 0:
@@ -425,23 +436,88 @@ class ApplicationAPI(BaseAPI):
                         json=upp_rule
                     )
         else:
-            logging.debug("No URL path-based policies set")
+            logger.debug("No URL path-based policies set")
 
-    def update(self, app_moniker, app_config):
+    def update(self, app_moniker, raw_app_config):
         """
         Update an existing EAA application configuration.
         """
+        postjj_app_config = self.parse_template(raw_app_config)
+        try:
+            app_config = json.loads(postjj_app_config)
+        except json.decoder.JSONDecodeError as jde:
+            for lineno, line in enumerate(postjj_app_config.splitlines()):
+                logger.error("{:4d}> {}".format(lineno+1, line))
+            raise jde
+
         # App core property update
         update = self.put(
             'mgmt-pop/apps/{applicationId}'.format(applicationId=app_moniker.uuid),
             json=app_config
         )
-        logging.info(f"Update core app HTTP/{update.status_code}: {update.text}")
+        logger.info(f"Update core app HTTP/{update.status_code}: {update.text}")
         if update.status_code != 200:
             cli.exit(2)
 
         # Update Access Control Rules
         self.set_acl(app_moniker, app_config)
+
+        # Directory/Group
+        self.set_appgroups(app_moniker, app_config)
+
+    def set_appgroups(self, app_moniker, app_config):
+        # TODO: use this method in create_auth to set_auth to better fit both create and update
+        # self.create_auth(app_moniker, app_config)
+
+        # Update require to pull the latest list of group (on Akamai Cloud)
+        # compare with what's in the incoming payload
+        # new groups added to mgmt-pop/appgroups?
+        # payload: {'data': [{'apps': [app_moniker.uuid], 'groups': app_config.get('groups', [])}]}
+        # remove groups that are not in the incoming payload to mgmt-pop/appgroups?method=DELETE
+        # {"deleted_objects":["ShTjwZjeRg2XjXvv--tHxQ"]}
+        # where the UUID in the list is the app group UUID
+        # Example
+        # Add "support"
+        # {"data":[{"apps":["PT0JVO4qS-m1g2-ja7-h_Q"],"groups":[{"uuid_url":"9hDCxROqTYmhokljs6uAsA","enable_mfa":"inherit"}]}]}
+        # Remove "support"
+        # {"deleted_objects":["S22ijoezTcmJ70l85O423A"]}
+
+        if app_config.get('groups'):  # if the group key is not in the json, we don't touch anything
+            existing_groups_resp = self.get(f'mgmt-pop/apps/{app_moniker.uuid}/groups/', params={'limit': 0})
+            existing_groups = existing_groups_resp.json().get('objects', [])
+            existing_groups_uuid_map = dict()  # mapping between group UUID and app-group UUID association
+            logger.debug(f"existing_groups_resp:\n{json.dumps(existing_groups, indent=2)}")
+            existing_group_uuids = set()
+            for appgroup in existing_groups:
+                scan_dirguuid = appgroup.get('group', {}).get('group_uuid_url')
+                scan_apguuid = appgroup.get('uuid_url')
+                existing_group_uuids.add(scan_dirguuid)
+                existing_groups_uuid_map[scan_dirguuid] = scan_apguuid
+
+            incoming_group_uuids = set()
+            for appgroup in app_config.get('groups', []):
+                incoming_group_uuids.add(appgroup.get('uuid_url'))
+
+            logger.debug(f"existing_appgroup_uuids={existing_group_uuids}")
+            logger.debug(f"incoming_appgroup_uuids={incoming_group_uuids}")
+
+            # Groups to delete
+            delete_payload = {"deleted_objects": []}
+            for group_uuid_to_delete in (existing_group_uuids - incoming_group_uuids):
+                logger.debug(f"Deleting group UUID {group_uuid_to_delete}, "
+                             f"appgroup UUID {existing_groups_uuid_map[group_uuid_to_delete]}...")
+                delete_payload["deleted_objects"].append(existing_groups_uuid_map[group_uuid_to_delete])
+            logger.debug(f"payload: {delete_payload}")
+            self.post('mgmt-pop/appgroups', params={'method': "DELETE"}, json=delete_payload)
+
+            # Group to add/ensure are presents
+            if len(app_config.get('groups', [])) > 0:
+                app_groups_payload = {'data': [{'apps': [app_moniker.uuid], 'groups': app_config.get('groups', [])}]}
+                app_groups_resp = self.post('mgmt-pop/appgroups', json=app_groups_payload)
+                if app_groups_resp.status_code != 200:
+                    cli.exit(2)
+            else:
+                logger.debug("No access groups set.")
 
     def attach_connectors(self, app_moniker, connectors):
         """
@@ -453,13 +529,13 @@ class ApplicationAPI(BaseAPI):
         # POST on mgmt-pop/apps/DBMcU6FwSjKa7c9sny4RLg/agents
         # Body
         # {"agents":[{"uuid_url":"cht3_GEjQWyMW9LEk7KQfg"}]}
-        logging.info("Attaching {} connectors...".format(len(connectors)))
+        logger.info("Attaching {} connectors...".format(len(connectors)))
         api_resp = self.post(
             'mgmt-pop/apps/{applicationId}/agents'.format(applicationId=app_moniker.uuid),
             json={'agents': connectors}
         )
-        logging.info("Attach connector response: %s" % api_resp.status_code)
-        logging.info("Attach connector app response: %s" % api_resp.text)
+        logger.info("Attach connector response: %s" % api_resp.status_code)
+        logger.info("Attach connector app response: %s" % api_resp.text)
         if api_resp.status_code not in (200, 201):
             cli.print_error("Connector(s) %s were not attached to application %s [HTTP %s]" %
                             (','.join([c.get('uuid_url') for c in connectors]), app_moniker, api_resp.status_code))
@@ -472,13 +548,13 @@ class ApplicationAPI(BaseAPI):
         Payload is different from attach above:
         {"agents":["cht3_GEjQWyMW9LEk7KQfg"]}
         """
-        logging.info("Detaching {} connectors...".format(len(connectors)))
+        logger.info("Detaching {} connectors...".format(len(connectors)))
         api_resp = self.post(
             'mgmt-pop/apps/{applicationId}/agents'.format(applicationId=app_moniker.uuid),
             params={'method': 'delete'}, json={'agents': [c.get('uuid_url') for c in connectors]}
         )
-        logging.info("Detach connector response: %s" % api_resp.status_code)
-        logging.info("Detach connector app response: %s" % api_resp.text)
+        logger.info("Detach connector response: %s" % api_resp.status_code)
+        logger.info("Detach connector app response: %s" % api_resp.text)
         if api_resp.status_code not in (200, 204):
             cli.print_error("Connector(s) %s were not detached from application %s [HTTP %s]" %
                             (','.join([c.get('uuid_url') for c in connectors]), app_moniker, api_resp.status_code))
@@ -486,7 +562,7 @@ class ApplicationAPI(BaseAPI):
             cli.exit(2)
 
     def add_dnsexception(self, app_moniker):
-        logging.info("Adding DNS exception: %s" % config.exception_fqdn)
+        logger.info("Adding DNS exception: %s" % config.exception_fqdn)
         appcfg = self.load(app_moniker)
         dns_exceptions = set(appcfg.get('advanced_settings', {}).get('domain_exception_list').split(','))
         dns_exceptions |= set(config.exception_fqdn)
@@ -494,8 +570,7 @@ class ApplicationAPI(BaseAPI):
         self.save(app_moniker, appcfg)
 
     def del_dnsexception(self, app_moniker):
-        logging.info("Remove DNS exception: %s" % config.exception_fqdn)
-        pass
+        logger.info("Remove DNS exception: %s" % config.exception_fqdn)
 
     def deploy(self, app_moniker, comment=""):
         """
@@ -509,6 +584,6 @@ class ApplicationAPI(BaseAPI):
         if comment:
             payload["deploy_note"] = comment
         deploy = self.post('mgmt-pop/apps/{applicationId}/deploy'.format(applicationId=app_moniker.uuid), json=payload)
-        logging.info("ApplicationAPI: deploy app response: %s" % deploy.status_code)
+        logger.info("ApplicationAPI: deploy app response: %s" % deploy.status_code)
         if deploy.status_code != 200:
-            logging.error(deploy.text)
+            logger.error(deploy.text)

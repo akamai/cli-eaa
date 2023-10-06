@@ -1,4 +1,4 @@
-# Copyright 2022 Akamai Technologies, Inc. All Rights Reserved
+# Copyright 2023 Akamai Technologies, Inc. All Rights Reserved
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ from multiprocessing import Pool
 import time
 import json
 import signal
+import datetime
 from functools import lru_cache
 
 
@@ -29,7 +30,7 @@ class ConnectorAPI(BaseAPI):
     Handle interactions with EAA Connector API
     """
     POOL_SIZE = 6        # When doing sub request, max concurrency of underlying HTTP request
-    LIMIT_SOFT = 256     # Soft limit of maximum of connectors to retreive at once
+    LIMIT_SOFT = 1024    # Soft limit of maximum of connectors to retreive at once
     APP_CACHE_TTL = 300  # How long we consider the app <-> connector mapping accurate enough
     NODATA = "-"         # Output value in the CSV cell if data is not available
     NODATA_JSON = None   # Output value in the CSV cell if data is not available
@@ -106,6 +107,11 @@ class ConnectorAPI(BaseAPI):
         """
         url_params = {'expand': 'true', 'limit': ConnectorAPI.LIMIT_SOFT}
         data = self.get('mgmt-pop/agents', params=url_params)
+        if data.status_code != 200:
+            cli.print_error(f"API Error HTTP/{data.status_code} for {data.url}")
+            cli.exit(2)
+
+        dt = datetime.datetime.now(tz=datetime.timezone.utc)
         connectors = data.json()
         total_con = 0
         header = '#Connector-id,name,reachable,status,version,privateip,publicip,debug'
@@ -140,7 +146,9 @@ class ConnectorAPI(BaseAPI):
                 "version": agent_version,
                 "privateip": c.get('private_ip') or ConnectorAPI.NODATA_JSON,
                 "publicip": c.get('public_ip') or ConnectorAPI.NODATA_JSON,
-                "debugchan": 'Y' if c.get('debug_channel_permitted') else 'N'
+                "debugchan": 'Y' if c.get('debug_channel_permitted') else 'N',
+                "os_version": c.get('os_version') or ConnectorAPI.NODATA_JSON,
+                "datetime": dt.isoformat()
             }
             if perf:
                 data.update({
@@ -207,9 +215,9 @@ class ConnectorAPI(BaseAPI):
                     if sleep_time > 0:
                         stop_event.wait(sleep_time)
                     else:
-                        logging.error(f"The EAA Connector API is slow to respond (could be also a proxy in the middle),"
+                        logging.error(f"The EAA Connector API is slow to respond (could be also a proxy in the middle)"
                                       f" holding for {interval} sec.")
-                        stop_event.wait(sleep_time)
+                        stop_event.wait(interval)
                 else:
                     break
             except Exception as e:
@@ -333,7 +341,7 @@ class ConnectorAPI(BaseAPI):
         app_api = ApplicationAPI(self._config)
         app_processed = 0
         cli.header("#Operation,connector-id,connector-name,app-id,app-name")
-        for app_using_old_con, app_name, app_host in self.findappbyconnector(old_con):
+        for app_using_old_con, app_name, app_host, do_ver in self.findappbyconnector(old_con):
             if dryrun:
                 cli.print("DRYRUN +,%s,%s,%s,%s" % (
                     new_con, infos_by_conid[new_con].get('name'),

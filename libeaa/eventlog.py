@@ -36,6 +36,8 @@ SOURCE = 'akamai-cli/eaa'
 #: Expected Response Content Type from SIEM Log API
 RESPONSE_CONTENTTYPE = "application/json"
 
+logger = logging.getLogger(__name__)
+
 
 def isDigit(x):
     try:
@@ -65,7 +67,13 @@ class EventLogAPI(common.BaseAPI):
     ACCESSLOG_API_V2 = "analytics/ops-data"
 
     def __init__(self, config):
-        super(EventLogAPI, self).__init__(config, api=common.BaseAPI.API_Version.Legacy)
+        if (
+            hasattr(config, "eaa_api_key") and
+            hasattr(config, "eaa_api_secret")
+        ):
+            super(EventLogAPI, self).__init__(config, api=common.BaseAPI.API_Version.Legacy)
+        else:
+            super(EventLogAPI, self).__init__(config, api=common.BaseAPI.API_Version.OpenAPI)
         self._content_type_json = {'content-type': 'application/json'}
         self._content_type_form = {'content-type': 'application/x-www-form-urlencoded'}
         self._headers = None
@@ -91,10 +99,15 @@ class EventLogAPI(common.BaseAPI):
         return d
 
     def get_api_url(self, logtype):
+        prefix = ''
+        logger.info(f"api_ver={self.api_ver}")
+        if self.api_ver == common.BaseAPI.API_Version.OpenAPI:
+            prefix = "mgmt-pop/"
+
         if logtype == self.EventType.ADMIN:
-            return self.ADMINEVENT_API
+            return prefix + self.ADMINEVENT_API
         elif logtype == self.EventType.USER_ACCESS:
-            return self.ACCESSLOG_API_V2
+            return prefix + self.ACCESSLOG_API_V2
         else:
             raise Exception(f"Unknown access log type {logtype}")
 
@@ -155,7 +168,7 @@ class EventLogAPI(common.BaseAPI):
         output_dict = {}
         debug_padding = 22
 
-        logging.debug("------ begin debug log line -----")
+        logger.debug("------ begin debug log line -----")
         field_pos = 1  # follows techdoc logic
         for field in line.split(" "):
             if field_pos == 7:
@@ -163,24 +176,24 @@ class EventLogAPI(common.BaseAPI):
                 field7result = re.search(field7re, field)
                 for subfieldkey in field7result.groupdict():
                     field_name = access_log_fields.get(field_pos, unknown_field)
-                    logging.debug(f"#{field_pos:02} {field_name:>{debug_padding}}: {field7result[subfieldkey]}")
+                    logger.debug(f"#{field_pos:02} {field_name:>{debug_padding}}: {field7result[subfieldkey]}")
                     output_dict[field_name] = field7result[subfieldkey]
                     field_pos += 2
             elif field_pos == 69:
                 if ":" in field:
                     for connector_ip_srcport in field.split(":"):
                         field_name = access_log_fields.get(field_pos, unknown_field)
-                        logging.debug(f"#{field_pos:02} {field_name:>{debug_padding}}: {connector_ip_srcport}")
+                        logger.debug(f"#{field_pos:02} {field_name:>{debug_padding}}: {connector_ip_srcport}")
                         output_dict[field_name] = connector_ip_srcport
                         field_pos += 2
                 else:
                     field_pos += 4  # Skip connector IP <semicolon> source port
             else:
                 field_name = access_log_fields.get(field_pos, unknown_field)
-                logging.debug(f"#{field_pos:02} {field_name:>{debug_padding}}: {field}")
+                logger.debug(f"#{field_pos:02} {field_name:>{debug_padding}}: {field}")
                 output_dict[field_name] = field
                 field_pos += 2
-        logging.debug("------ end debug log line -----")
+        logger.debug("------ end debug log line -----")
 
         return output_dict
 
@@ -200,7 +213,13 @@ class EventLogAPI(common.BaseAPI):
             count = 0
             api_url = self.get_api_url(logtype)
             resp = self.post(api_url, json=drpc_args)
-            if RESPONSE_CONTENTTYPE not in resp.headers['content-type']:
+            logger.debug(f"Response HTTP/{resp.status_code}, "
+                         f"HTTP header for POST {self._baseurl}{api_url} {resp.headers}")
+            if not resp.headers.get('content-type'):
+                logger.fatal(f"Content-Type header missing in response: POST {self._baseurl}{api_url} {resp.headers}")
+                logger.fatal(f"Response body first 100 char: {resp.text[:100]}")
+            if self.api_ver == common.BaseAPI.API_Version.Legacy and \
+               RESPONSE_CONTENTTYPE not in resp.headers['content-type']:
                 msg = (f"Invalid API response content-type: "
                        f"{resp.headers['content-type']}, expecting '{RESPONSE_CONTENTTYPE}'. "
                        f"URL: {resp.url}. "
@@ -211,7 +230,7 @@ class EventLogAPI(common.BaseAPI):
                 raise CLIFatalException(msg)
 
             resj = resp.json()
-            logging.debug("JSON> %s" % json.dumps(resj, indent=2))
+            logger.debug("JSON> %s" % json.dumps(resj, indent=2))
 
             if 'message' in resj:
                 if logtype == self.EventType.USER_ACCESS:
@@ -224,7 +243,7 @@ class EventLogAPI(common.BaseAPI):
                 else:
                     raise NotImplementedError("Doesn't support log type %s" % logtype)
 
-                logging.debug("scroll_id: %s" % scroll_id)
+                logger.debug("scroll_id: %s" % scroll_id)
 
                 if logtype == self.EventType.USER_ACCESS:
                     for e in resj.get('message', [])[0][1].get('data', []):
@@ -236,7 +255,7 @@ class EventLogAPI(common.BaseAPI):
                             output.write("%s\n" % json.dumps(EventLogAPI.userlog_prepjson(parsed_dict)))
                         else:
                             output.write(line + "\n")
-                        logging.debug(f"### flog v2 [{self.line_count}] ## {e}")
+                        logger.debug(f"### flog v2 [{self.line_count}] ## {e}")
                         self.line_count += 1
                         count += 1
                 elif logtype == self.EventType.ADMIN:
@@ -264,26 +283,26 @@ class EventLogAPI(common.BaseAPI):
                             self.line_count += 1
                             count += 1
                         except Exception as e:
-                            logging.exception('Error parsing admin log line: %s, content: %s' %
+                            logger.exception('Error parsing admin log line: %s, content: %s' %
                                               (e, item.get('splunk_line')))
             else:
-                logging.error('Error: no data(message) in response.')
-                logging.error(drpc_args)
-                logging.error(json.dumps(resj))
+                logger.error('Error: no data(message) in response.')
+                logger.error(drpc_args)
+                logger.error(json.dumps(resj))
                 self.error_count += 1
             resp.close()
         except CLIFatalException:
-            logging.exception("Fatal Exception")
+            logger.exception("Fatal Exception")
             cli.exit(2)
         except requests.exceptions.RequestException:
-            logging.exception("Fatal HTTP/API transaction")
+            logger.exception("Fatal HTTP/API transaction")
             cli.exit(2)
         except Exception:
             if "resp" in locals():
-                logging.debug("resp.status_code %s" % resp.status_code)
-                logging.debug("resp.text %s" % resp.text)
-            logging.error(drpc_args)
-            logging.exception("Generic Exception")
+                logger.debug("resp.status_code %s" % resp.status_code)
+                logger.debug("resp.text %s" % resp.text)
+            logger.error(drpc_args)
+            logger.exception("Generic Exception")
         return (scroll_id, count)
 
     @staticmethod
@@ -305,18 +324,18 @@ class EventLogAPI(common.BaseAPI):
         :param stop_event:  thread event, the fetch will operate in a loop until the event is set
         """
         log_type = self.EventType(config.log_type)
-        logging.info(log_type)
+        logger.info(log_type)
         signal.signal(signal.SIGTERM, exit_fn)
         signal.signal(signal.SIGINT, exit_fn)
 
-        logging.info("PID: %s" % os.getpid())
-        logging.info("Poll interval: %s seconds" % EventLogAPI.PULL_INTERVAL_SEC)
+        logger.info("PID: %s" % os.getpid())
+        logger.info("Poll interval: %s seconds" % EventLogAPI.PULL_INTERVAL_SEC)
         out = None
         count = 0
 
         try:
             if isinstance(self._output, str):
-                logging.info("Output file: %s" % self._output)
+                logger.info("Output file: %s" % self._output)
                 out = open(self._output, 'w+', encoding='utf-8')
             elif hasattr(self._output, 'write'):
                 out = self._output
@@ -332,7 +351,7 @@ class EventLogAPI(common.BaseAPI):
                 delay_sec = max(config.delay, EventLogAPI.COLLECTION_MIN_DELAY_SEC)
                 ets, sts = EventLogAPI.date_boundaries(delay_sec)
                 s = time.time()
-                logging.info("Fetching log[%s] from %s to %s..." % (log_type, sts, ets))
+                logger.info("Fetching log[%s] from %s to %s..." % (log_type, sts, ets))
                 if log_type == log_type.ADMIN:
                     if not config.batch and out.seekable():
                         cli.print("#DatetimeUTC,AdminID,ResourceType,Resource,Event,EventType")
@@ -367,24 +386,24 @@ class EventLogAPI(common.BaseAPI):
                     break
                 else:
                     elapsed = time.time() - s
-                    logging.debug("[config] Limit={}, Delay={} sec, Window={:.0f} ms".format(
+                    logger.debug("[config] Limit={}, Delay={} sec, Window={:.0f} ms".format(
                         self._config.limit, self._config.delay, ets-sts))
-                    logging.debug(("[perf] {} event(s) took {:.3f} sec, "
+                    logger.debug(("[perf] {} event(s) took {:.3f} sec, "
                                   "fetch speed={:.1f} eps/{:,.0f} epm").format(fetch_log_count, elapsed,
                                   fetch_log_count/elapsed, 60*fetch_log_count/elapsed))
                     if elapsed > EventLogAPI.PULL_INTERVAL_SEC:
-                        logging.warn("!! Data loss warning !! API request/responses takes too long. "
+                        logger.warn("!! Data loss warning !! API request/responses takes too long. "
                                      "Check internet connectivity.")
-                    logging.debug("Now waiting %s seconds..." % (EventLogAPI.PULL_INTERVAL_SEC - elapsed))
+                    logger.debug("Now waiting %s seconds..." % (EventLogAPI.PULL_INTERVAL_SEC - elapsed))
                     stop_event.wait(EventLogAPI.PULL_INTERVAL_SEC - elapsed)
                     fetch_log_count = 0
                     if stop_event.is_set():
                         break
         except Exception:
-            logging.exception("General exception while fetching EAA logs")
+            logger.exception("General exception while fetching EAA logs")
         finally:
             if out and self._output != sys.stdout:
-                logging.debug("Closing output file...")
+                logger.debug("Closing output file...")
                 out.close()
             if self.line_count > 0:
-                logging.info("%s log lines were fetched." % self.line_count)
+                logger.info("%s log lines were fetched." % self.line_count)

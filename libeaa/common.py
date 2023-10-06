@@ -17,7 +17,7 @@ Common class / function for cli-eaa
 """
 
 #: cli-eaa version [PEP 8]
-__version__ = '0.5.6'
+__version__ = '0.6.0'
 
 import sys
 from threading import Event
@@ -196,15 +196,16 @@ class BaseAPI(object):
         edgerc = EdgeRc(config.edgerc)
         section = config.section
         self.extra_qs = {}
+        self.api_ver = api
 
-        if api == self.API_Version.Legacy:  # Prior to {OPEN} API, used for SIEM API only
-            self._api_ver = api
+        if self.api_ver == self.API_Version.Legacy:  # Prior to {OPEN} API, used for SIEM API only
             self._content_type_json = {'content-type': 'application/json'}
             self._content_type_form = \
                 {'content-type': 'application/x-www-form-urlencoded'}
             self._headers = None
             # self._baseurl = 'https://%s' % edgerc.get(section, 'host')
-            self._baseurl = 'https://%s/api/v1/' % edgerc.get(section, 'eaa_api_host')
+            self._baseurl = 'https://%s/api/v1/' % edgerc.get(section, 'eaa_api_host',
+                                                              fallback="manage.akamai-access.com")
             self._session = requests.Session()
             self._session.auth = EAALegacyAuth(
                 edgerc.get(section, 'eaa_api_key'),
