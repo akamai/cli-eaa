@@ -17,7 +17,7 @@ Common class / function for cli-eaa
 """
 
 #: cli-eaa version [PEP 8]
-__version__ = '0.6.0'
+__version__ = '0.6.1'
 
 import sys
 from threading import Event
@@ -216,7 +216,6 @@ class BaseAPI(object):
             )
             self._session.mount("https://", siem_api_adapter)
         else:  # EAA {OPEN} API
-            # TODO handle ambiguity when multiple contract ID are in use
             self._baseurl = 'https://%s/crux/v1/' % edgerc.get(section, 'host')
             self._session = requests.Session()
             self._session.auth = EdgeGridAuth.from_edgerc(edgerc, section)
@@ -237,10 +236,17 @@ class BaseAPI(object):
         return f"{self._config.ua_prefix} cli-eaa/{__version__}"
 
     def build_params(self, params=None):
+        """
+        Merge parameters passed as function argument with arguments from the configuration.
+
+        Return a dictionnary Requests can consume as `params` argument
+        """
         final_params = {"ua": self.user_agent()}
         final_params.update(self.extra_qs)
         if hasattr(self._config, 'contract_id') and self._config.contract_id:
             final_params.update({'contractId': self._config.contract_id})
+        if hasattr(self._config, 'accountkey') and self._config.accountkey:
+            final_params.update({'accountSwitchKey': self._config.accountkey})
         if isinstance(params, dict):
             final_params.update(params)
         return final_params

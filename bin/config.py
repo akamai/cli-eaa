@@ -1,5 +1,5 @@
 """
- Copyright 2022 Akamai Technologies, Inc. All Rights Reserved.
+ Copyright 2023 Akamai Technologies, Inc. All Rights Reserved.
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
 
@@ -62,6 +62,9 @@ class EdgeGridConfig():
         listgrp_parser = subsub.add_parser("list", help="List all groups existing in an EAA directory")
         listgrp_parser.add_argument('--groups', '-g', action='store_true', default=True, help="Display users")
         listgrp_parser.add_argument('--users', '-u', action='store_true', default=False, help="Display groups")
+        listgrp_parser.add_argument('--json', action='store_true', default=False, help="Output as JSON")
+        listgrp_parser.add_argument('--tail', '-f', action='store_true', default=False,
+                                    help="Keep watching directory list, do not exit until Control+C/SIGTERM")
         listgrp_parser.add_argument('search_pattern', nargs='?', help="Search pattern")
 
         addgrp_parser = subsub.add_parser("addgroup", help="Add Group")
