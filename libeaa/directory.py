@@ -39,7 +39,7 @@ class DirectoryStatus(Enum):
 class Status(Enum):
     not_added = 1
     added = 2
-    no_agent = 3
+    no_connector = 3
     pending = 4
     not_reachable = 5
     ok = 6
@@ -173,14 +173,14 @@ class DirectoryAPI(BaseAPI):
                 output["service"] = Service(d.get("service")).name
                 output["name"] = d.get("name")
                 output["datetime"] = dt.isoformat()
-                output["status"] = d.get("status")
+                output["enabled"] = d.get("status") == 1
                 output["connector_count"] = len(d.get("agents"))
                 output["directory_status"] = Status(d.get("directory_status")).name
                 output["group_count"] = d.get("user_count")
                 output["user_count"] = d.get("group_count")
                 output["last_sync"] = d.get("last_sync")
-                output["sync_state"] = SyncState(d.get("sync_state")).name
-                output["conf_state"] = d.get("conf_state")
+                if d.get("agents"):
+                    output["connectors"] = d.get("agents")
 
                 if self._config.json:
                     cli.print(json.dumps(output))
