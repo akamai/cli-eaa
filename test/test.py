@@ -25,7 +25,7 @@ Prep your environment for nose2
    . ./venv/bin/activate # or any other location/preference
    pip install nose nose2-html-report
 
-Run the test
+Run all tests
 
 .. code-block:: bash
    cd test
@@ -332,6 +332,25 @@ class TestIdentity(CliEAATest):
         dir_count = len(output.splitlines())
         self.assertGreater(dir_count, 0, "We expect at least one directory (cloud directory) to be configured")
         self.assertEqual(cmd.returncode, 0, 'return code must be 0')
+
+
+class TestDirectory(CliEAATest):
+
+    def test_directory_health_tail(self):
+        """
+        Run directory command to fetch full health statuses in follow mode
+        We use the RAW format for convenience (easier to read in the output)
+        """
+        cmd = self.cli_run('-d', '-v', 'dir', 'list', '--json', '--tail')
+        time.sleep(20)  # Long enough to collect some data
+        cmd.send_signal(signal.SIGINT)
+        stdout, stderr = cmd.communicate(timeout=50.0)
+        CliEAATest.cli_print("rc: ", cmd.returncode)
+        for line in stdout.splitlines():
+            CliEAATest.cli_print("stdout>", line)
+        for line in stderr.splitlines():
+            CliEAATest.cli_print("stderr>", line)
+        self.assertGreater(len(stdout), 0, "No directory health output")
 
 
 class TestCliEAA(CliEAATest):
