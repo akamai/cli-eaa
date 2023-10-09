@@ -118,7 +118,7 @@ class DirectoryAPI(BaseAPI):
                 ln=u.get('last_name')
             ))
 
-    def list_directories(self, interval=10, stop_event=None):
+    def list_directories(self, interval=300, stop_event=None):
         """
         List directories configured in the tenant.
 
@@ -143,7 +143,7 @@ class DirectoryAPI(BaseAPI):
                 else:
                     break
             except Exception as e:
-                if follow:
+                if self._config.tail:
                     logging.error(f"General exception {e}, since we are in follow mode (--tail), we keep going.")
                 else:
                     raise
