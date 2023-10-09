@@ -180,6 +180,18 @@ dir://EX5-YjMyTrKgeWKHrqhUEA,Okta LDAP,10
 dir://Ygl1BpAFREiHrA8HR7dFhA,Azure AD,1
 ```
 
+also possible as JSON, and in follow mode to consume Directory Health:
+
+```
+$ akamai eaa dir list --json --tail | jq .name
+"Cloud Directory"
+"AD Domain AkamaiDemo.net (global)"
+"Azure AD (Sync with SCIM)"
+"AKDEMO AD with UPN"
+```
+
+
+
 Trigger directory synchronization
 
 ```

@@ -176,8 +176,8 @@ class DirectoryAPI(BaseAPI):
                 output["enabled"] = d.get("status") == 1
                 output["connector_count"] = len(d.get("agents"))
                 output["directory_status"] = Status(d.get("directory_status")).name
-                output["group_count"] = d.get("user_count")
-                output["user_count"] = d.get("group_count")
+                output["group_count"] = d.get("group_count")
+                output["user_count"] = d.get("user_count")
                 output["last_sync"] = d.get("last_sync")
                 if d.get("agents"):
                     output["connectors"] = d.get("agents")
