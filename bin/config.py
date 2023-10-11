@@ -227,7 +227,7 @@ class EdgeGridConfig():
 
         if os.path.isfile(arguments["edgerc"]):
             config = ConfigParser()
-            config.readfp(open(arguments["edgerc"]))
+            config.read_file(open(arguments["edgerc"]))
             if not config.has_section(configuration):
                 err_msg = "ERROR: No section named %s was found in your %s file\n" % \
                           (configuration, arguments["edgerc"])
