@@ -28,11 +28,12 @@
 ## Introduction
 
 [Enterprise Application Access (EAA)](https://www.akamai.com/us/en/products/security/enterprise-application-access.jsp) comes with a full suite of APIs. 
-Yet you need to write scripts or use [Postman](https://developer.akamai.com/authenticate-with-postman) to be able to interact with the service.
+To interact with the service, you can: 
+- write scripts
+- use [Postman](https://developer.akamai.com/authenticate-with-postman) 
+- use [Akamai CLI](https://developer.akamai.com/cli) to run common operations directly from the command line, no coding required. 
 
-With [Akamai CLI](https://developer.akamai.com/cli) you can run very common operations directly from the command line, no coding required. 
-
-This can be helpful if you plan to consume EAA logs into your favorite SIEM, or automate some operation in your workflow with Bash, Powershell or solution like Ansible.
+This can be helpful if you plan to consume EAA logs into your favorite SIEM or automate your workflow with Bash, Powershell or a deployment solution like Ansible.
 
 ## Key features
 
@@ -40,24 +41,23 @@ This can be helpful if you plan to consume EAA logs into your favorite SIEM, or 
   - View access logs (identification, application activity)
   - View admin logs (admin portal access, config change, deployment, deletion)
   - Send the logs to a file
-  - Blocking mode (similar to `tail -f`)
-  - Alternatively, you can specify a date range with `--start` and `--end`
+  - Blocking mode (similar to `tail -f`) Alternatively, you can specify a date range with `--start` and `--end`
 - Application
   - Save, restore/update, deploy
   - Batch operation
   - Attach/detach connectors
 - Directory
-  - Create group and group overlay
+  - Create groups and group overlays
   - Synchronize with your LDAP or Active Directory
 - Identity Providers (IdP)
-  - List configured IdP, status
+  - List configured IdPs and their status
 - Certificate management
   - List configured certificates
   - Rotate certificate with optional deployment of dependent applications and IdP
 - Connectors
   - List all connectors including the reachability status and health
-  - Show all applications used by a connector and breakdown of active connection
-  - Swap a connector (limited to applications only)
+  - Show all applications used by a connector and a breakdown of active connection
+  - Swap a connector (for applications only)
 
 ## Installation / upgrade
 
@@ -65,33 +65,31 @@ See [install.md](docs/install.md)
 
 ## Examples
 
-### EAA event logs
+### EAA Event Logs
 
-EAA comes with two types of logs, the user access logs and the administrators audit logs.
-For detailed description about each field, please refer to the product documentation on [https://techdocs.akamai.com](https://techdocs.akamai.com/eaa/docs/data-feed-siem).
+EAA comes with two types of logs, the user access logs and the administrator audit logs.
+For detailed description for each event field, refer to the product documentation on [https://techdocs.akamai.com](https://techdocs.akamai.com/eaa/docs/data-feed-siem).
 
-You can pull EAA events either:
-- in near realtime using the argument `-f` or `--tail`
-- or retrieve a period of time passing EPOCH timestamp in `--start` and `--end`
-- tune the acceptable delay vs. completeness with `--delay`, we recommend 10 minutes delay for full completeness
+You can retrieve EAA events one of these ways:
+- in near realtime using the argument `-f` or `--tail`. If you set `-f` and date range, the `-f` option will be ignored.
+- retrieve a period of time based on EPOCH timestamp in `--start` and `--end`
+- tune the acceptable delay vs. completeness with `--delay`. We recommend 10 minutes delay for full completeness.
 
-If you set `-f` and date range, the `-f` option will be ignored.
-
-Pull user access logs, block till new logs are received.
-You can stop by pressing Control+C (Control+Break) or sending a signal SIG_INT or SIG_TERM to the process
+Pull user access logs, block until new logs are received.
+You can stop using Control+C (Control+Break) or sending a SIG_INT or SIG_TERM signal to the process.
 
 ```bash
 $ akamai eaa log access --tail
 ```
 
-You may want a one time chunk of log for a period of time, let's say the last 6 hours:
+You may want a one time chunk of log for a period of time, for example, the last 6 hours:
 
 ```bash
 $ START=$(bc <<< "$(date +%s) - 6 * 60 * 60")
 $ akamai eaa log access -s $START
 ```
 
-On Windows platforms, you may use PowerShell
+On Windows platforms, you can use PowerShell:
 ```powershell
 PS /home/cli-eaa> $START = (Get-Date -UFormat %s) - 6 * 60 * 60
 PS /home/cli-eaa> akamai eaa log access -s $START
@@ -108,30 +106,32 @@ $ akamai eaa log admin --tail
 ```
 
 ### Applications
+Common use cases:
 
+**Find an application**:
 ```
 $ akamai eaa search datascience
 app://mD_Pw1XASpyVJc2JwgICTg,Data Science,akdemo-datascience,akdemo-datascience.go.akamai-access.com,4
 Found 1 app(s), total 124 app(s)
 ```
-
-You can save locally the application
+Save an application:
+You can save the application locally:
 ```
 $ akamai eaa app app://mD_Pw1XASpyVJc2JwgICTg > ~/eaa_app_datascience_v3.json
 ```
 
-And restore
+**Restore the application**:
 ```
 $ cat ~/eaa_app_datascience_v3.json | akamai eaa app app://mD_Pw1XASpyVJc2JwgICTg update
 ```
 
-Or quickly walk through the JSON tree with `jq`.
+Or quickly walk through the JSON tree using `jq`.
 ```
 $ akamai eaa -b app app://mD_Pw1XASpyVJc2JwgICTg | jq .advanced_settings.websocket_enabled
 "true"
 ```
 
-Delete an application
+**Delete an application**:
 ```
 akamai eaa app app://mD_Pw1XASpyVJc2JwgICTg delete
 ```
@@ -141,21 +141,21 @@ Deploy an application, you can optionally add a comment to keep track of the cha
 akamai eaa app app://mD_Pw1XASpyVJc2JwgICTg deploy --comment "[TICKET1234] Update service account credentials"
 ```
 
-
-One question we often get: *What are the applications using connector `xyz`?*\
-Buckle up, we use `jq` and `grep`.\
+Finding an application using a specific connector name: 
+*What are the applications using connector `xyz`?*\
+Use `jq` and `grep`.\
 Note: we use `-b` to avoid the extra info the CLI spills out, like the footer.
 
 ```
 $ akamai eaa -b search | akamai eaa app - | jq -j '.name, ": ", (.agents[]|.name, " "), "\n"'|grep xyz
 ```
 
-View groups associated with a particular application
+View groups associated with a particular application:
 ```
 $ akamai eaa app app://FWbUCfpvRKaSOX1rl0u55Q viewgroups
 ```
 
-You can pipe command as well, example to deploy all the application matching "bastion"
+You can pipe the command as well, for example to deploy all the application matching your search (eg. "bastion")
 
 ```
 $ akamai eaa -b search bastion | akamai eaa app - deploy
@@ -170,7 +170,7 @@ $ akamai eaa app app://app-uuid-1 detach con://connector-uuid-1 con://connector-
 
 ### Directory operations
 
-List the configured directories
+**List the configured directories**:
 
 ```
 $ akamai eaa dir
@@ -180,7 +180,7 @@ dir://EX5-YjMyTrKgeWKHrqhUEA,Okta LDAP,10
 dir://Ygl1BpAFREiHrA8HR7dFhA,Azure AD,1
 ```
 
-also possible as JSON, and in follow mode to consume Directory Health:
+To view the output in JSON format and in follow mode to consume Directory Health:
 
 ```
 $ akamai eaa dir list --json --tail | jq .name
@@ -190,9 +190,7 @@ $ akamai eaa dir list --json --tail | jq .name
 "AKDEMO AD with UPN"
 ```
 
-
-
-Trigger directory synchronization
+**Trigger directory synchronization**
 
 ```
 $ akamai eaa dir dir://2Kz2YqmgSpqT_IJq9BLkWg sync
@@ -202,9 +200,9 @@ Directory 2Kz2YqmgSpqT_IJq9BLkWg synchronization requested.
 
 ### Connectors
 
-Here with the shortcut `c` and the `column` command available in most POSIX environment.
-When piping, the extra information written on *stderr* so they appear seperately.
-Below short command `akamai eaa c` short form for `akamai eaa connector list`:
+Using the shortcut `c` and the `column` command available in most POSIX environment.
+When piping, the extra information is written to *stderr* so they appear seperately.
+This example shows a short command `akamai eaa c`, replacing `akamai eaa connector list`:
 
 ```
 $ akamai eaa c | column -t -s,
@@ -221,9 +219,9 @@ con://e_0nShZBQ7esNAC3ZEkhSQ  demo-v2-con-3-amer  1          1       4.4.0-2765 
 con://OEe9o-n2S_aMeZpLxgwG0A  tmelab-sfo          1          1       4.4.0-2765  192.168.2.101  12.123.123.12   Y
 ```
 
-If you need to integrate connector health into your monitoring system, use the `--perf` option.
-Command `akamai eaa c list --perf`
-You will get 7 extra columns:
+To integrate connector health into your monitoring system, use the `--perf` option.
+`akamai eaa c list --perf`
+This provides 7 extra columns:
 - CPU usage (%)
 - Memory usage (%)
 - Network Traffic (Mbps)
@@ -231,7 +229,7 @@ You will get 7 extra columns:
 - Idle dialout connections
 - Active dialout connections
 
-To correlate with application served by each connectors, use the `--showapps`, a list of the application FQDNs as an array in the JSON response.
+To correlate with applications served by each connector, use the `--showapps` argument to include a list of the application FQDNs as an array in the JSON response.
 
 #### Swapping connectors
 
@@ -257,9 +255,9 @@ Updated application(s) is/are marked as ready to deploy
 
 #### Display certificates
 
-The following command `cert` will display all the certificate you have configured in EAA. It will also display the CN and SAN attribute and display all the thoses in the `hosts` field. If multiple, we use `+` as a separator.
+The command `cert` displays all the certificate you have configured in EAA, along with the CN and SAN attribute in the `hosts` field, as a `+` separated list.
 
-Here an example with a wildcard certificate:
+Example with a wildcard certificate:
 
 ```
 $ akamai eaa cert | head -n1
@@ -267,18 +265,14 @@ $ akamai eaa cert | head -n1
 crt://KXi553saQSCeNI1_WH6xuA,*.akamaidemo.net,Custom,2031-06-05T22:56:34,3307,*.akamaidemo.net+akamaidemo.net
 ```
 
-#### Rotation
+#### Rotate certificates
 
-One of the most common task with certificate it to rotate before the current certificate expires.
+The cli-eaa helps with this task with the `akamai eaa certificate` command. 
 
-cli-eaa helps with this task with the `akamai eaa certificate` command. 
+Pass the certificate and key file as parameter with the optional passphrase to replace the existing certificate.
+By default, the rotation does NOT redeploy the impacted application or IdP. 
+To trigger the re-deployment of all impacted applications and IdP, add the ``--deployafter`` flag.
 
-You simply pass the certificate  and key file as parameter, the optional passphrase and the 
-command will replace the existing certificate.
-By default, the rotation won't redeploy the impacted application / IdP. If you want the cli to trigger the
-deployment of all impacted applications and IdP, add the ``--deployafter``.
-
-Example using `--deployafter`:
 ```
 $ akamai eaa certificate crt://certificate-UUID rotate --key ~/certs/mycert.key --cert ~/certs/mycert.cert --deployafter
 Rotating certificate certificate-UUID...
@@ -291,7 +285,7 @@ Deployment(s) in progress, it typically take 3 to 5 minutes
 Use 'akamai eaa cert crt://certificate-UUID status' to monitor the progress.
 ```
 
-Checking the status of the deployment:
+Check the deployment status:
 
 ```bash
 $ akamai eaa cert crt://certificate-UUID status
@@ -303,7 +297,7 @@ idp://idpid-1,Bogus IdP to test EME-365,Pending
 
 ### Device Posture Inventory
 
-Pipe the result of the inventory into `jq` to display only device ID, name and user_id
+Pipe the result of the inventory into `jq` to display only device ID, name and user_id:
 
 ```bash
 $ akamai eaa dp inventory | jq '.[] | {device_id, device_name, user_id}'
@@ -311,7 +305,7 @@ $ akamai eaa dp inventory | jq '.[] | {device_id, device_name, user_id}'
 
 ## Known Limitations
 
-- While updating an application from a JSON, only a subset of the data will be updated in the back-end, not the entire application configuration
+While updating an application from a JSON, only a subset of the data will be updated in the back-end, not the entire application configuration.
 
 ## Troubleshooting and Support
 
@@ -328,5 +322,4 @@ The messages are printed on _stderr_ so you can safely redirect stdout to a file
 
 `cli-eaa` is provided as-is and it is not supported by Akamai Support.
 To report any issue, feature request or bug, please open a new issue into the [GitHub Issues page](https://github.com/akamai/cli-eaa/issues)
-
-We are strongly encouraging developer to create a pull request.
+We strongly encourage developers to create a pull request for any issues. 
