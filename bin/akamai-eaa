@@ -272,7 +272,7 @@ if __name__ == "__main__":
         elif config.command in ("app", "a"):
             a = ApplicationAPI(config)
             a.process_command()
-        elif config.command in ("connector", "c"):
+        elif config.command in ("connector", "c", "con"):
             c = ConnectorAPI(config)
             perf = hasattr(config, 'perf') and config.perf
             if config.action == "swap":
@@ -280,6 +280,8 @@ if __name__ == "__main__":
             elif config.action == "apps":
                 con_moniker = EAAItem(config.connector_id)
                 c.list_apps(con_moniker, perf=perf)
+            elif config.action == "allowlist":
+                c.allow_list()
             else:
                 # if command is "akamai eaa connector" we default to "list"
                 # Unless the long form "akamai eaa connector list" is used

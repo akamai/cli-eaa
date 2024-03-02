@@ -19,6 +19,8 @@ import json
 import signal
 import datetime
 from functools import lru_cache
+import io
+import csv
 
 
 from common import cli, BaseAPI, EAAItem
@@ -241,6 +243,33 @@ class ConnectorAPI(BaseAPI):
         url_params = {'limit': ApplicationAPI.LIMIT_SOFT, 'expand': 'true'}
         search_app = self.get('mgmt-pop/apps', params=url_params)
         return search_app.json()
+
+    def allow_list(self):
+        """
+        Print the Connector Allow List of endpoint (IP/CIDR or host)
+        as a CSV
+        """
+        csv_output = io.StringIO()
+        ep_fmt = "IP/CIDR"
+        if self._config.fqdn:
+            ep_fmt = "FQDN"
+
+        fieldnames = ['Location', 'Protocol', ep_fmt, 'Update']
+        csv_writer = csv.writer(csv_output, quoting=csv.QUOTE_MINIMAL)
+        csv_writer.writerow(fieldnames)
+        r = self.get("/crux/v1/zt/outboundallowlist")
+        # logging.error(r.json())
+        for l in r.json():
+            if self._config.fqdn:
+                hosts = l.get('host').split(",")
+                gen = (h for h in hosts if h not in ('-', ))
+                for h in gen:
+                    csv_writer.writerow([l.get('location'), l.get('protocol'), h.strip(), l.get('modifiedDate')])
+            else:
+                for ip in l.get('ips', []):
+                    csv_writer.writerow([l.get('location'), l.get('protocol'), ip.get('ip'), ip.get('modifiedDate')])
+
+        cli.print(csv_output.getvalue())
 
     def findappbyconnector(self, connector_moniker):
         """

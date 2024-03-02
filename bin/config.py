@@ -161,7 +161,15 @@ class EdgeGridConfig():
         # subparsers.required = False
         swap_parser = subsub.add_parser("swap", help="Swap connector with another one")
         swap_parser.add_argument(dest="new_connector_id", help='New connector ID')
-        swap_parser.add_argument('--dryrun', dest="dryrun", action="store_true", default=False, help='Dry run mode')
+        swap_parser.add_argument('--dryrun', dest="dryrun", action="store_true", default=False, 
+            help='Dry run mode')
+        allowlist_parser = subsub.add_parser("allowlist", 
+            help="Dump EAA Cloud Endpoint for Firewall/Proxy/Network Security equipement")
+        # allowlist_parser.add_argument('--configured', dest="only_configured", action="store_true", default=False, 
+        #     help='Show only endpoints being used')
+        allowlist_parser.add_argument('--fqdn', dest="fqdn", action="store_true", default=False, 
+            help='Show Hostname instead of IP/CIDR')
+
 
         subparsers.add_parser('idp', aliases=["i"], help='Manage EAA Identity Providers')
 
