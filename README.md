@@ -7,14 +7,13 @@
 - [Key features](#key-features)
 - [Installation / upgrade](#installation--upgrade)
 - [Examples](#examples)
-  - [EAA event logs](#eaa-event-logs)
+  - [EAA Event Logs](#eaa-event-logs)
   - [Applications](#applications)
   - [Directory operations](#directory-operations)
   - [Connectors](#connectors)
-    - [Swapping connectors](#swapping-connectors)
   - [Certificate management](#certificate-management)
     - [Display certificates](#display-certificates)
-    - [Rotation](#rotation)
+    - [Rotate certificates](#rotate-certificates)
   - [Device Posture Inventory](#device-posture-inventory)
 - [Known Limitations](#known-limitations)
 - [Troubleshooting and Support](#troubleshooting-and-support)
@@ -106,67 +105,8 @@ $ akamai eaa log admin --tail
 ```
 
 ### Applications
-Common use cases:
 
-**Find an application**:
-```
-$ akamai eaa search datascience
-app://mD_Pw1XASpyVJc2JwgICTg,Data Science,akdemo-datascience,akdemo-datascience.go.akamai-access.com,4
-Found 1 app(s), total 124 app(s)
-```
-Save an application:
-You can save the application locally:
-```
-$ akamai eaa app app://mD_Pw1XASpyVJc2JwgICTg > ~/eaa_app_datascience_v3.json
-```
-
-**Restore the application**:
-```
-$ cat ~/eaa_app_datascience_v3.json | akamai eaa app app://mD_Pw1XASpyVJc2JwgICTg update
-```
-
-Or quickly walk through the JSON tree using `jq`.
-```
-$ akamai eaa -b app app://mD_Pw1XASpyVJc2JwgICTg | jq .advanced_settings.websocket_enabled
-"true"
-```
-
-**Delete an application**:
-```
-akamai eaa app app://mD_Pw1XASpyVJc2JwgICTg delete
-```
-
-Deploy an application, you can optionally add a comment to keep track of the change:
-```
-akamai eaa app app://mD_Pw1XASpyVJc2JwgICTg deploy --comment "[TICKET1234] Update service account credentials"
-```
-
-Finding an application using a specific connector name: 
-*What are the applications using connector `xyz`?*\
-Use `jq` and `grep`.\
-Note: we use `-b` to avoid the extra info the CLI spills out, like the footer.
-
-```
-$ akamai eaa -b search | akamai eaa app - | jq -j '.name, ": ", (.agents[]|.name, " "), "\n"'|grep xyz
-```
-
-View groups associated with a particular application:
-```
-$ akamai eaa app app://FWbUCfpvRKaSOX1rl0u55Q viewgroups
-```
-
-You can pipe the command as well, for example to deploy all the application matching your search (eg. "bastion")
-
-```
-$ akamai eaa -b search bastion | akamai eaa app - deploy
-```
-
-Attach/detach connectors to a particular application:
-
-```
-$ akamai eaa app app://app-uuid-1 attach con://connector-uuid-1 con://connector-uuid-2
-$ akamai eaa app app://app-uuid-1 detach con://connector-uuid-1 con://connector-uuid-2
-```
+See [akamai eaa command documentation page](docs/commands/akamai-eaa-app.md). 
 
 ### Directory operations
 
@@ -200,56 +140,7 @@ Directory 2Kz2YqmgSpqT_IJq9BLkWg synchronization requested.
 
 ### Connectors
 
-Using the shortcut `c` and the `column` command available in most POSIX environment.
-When piping, the extra information is written to *stderr* so they appear seperately.
-This example shows a short command `akamai eaa c`, replacing `akamai eaa connector list`:
-
-```
-$ akamai eaa c | column -t -s,
-Total 9 connector(s)
-#Connector-id                 name                reachable  status  version     privateip      publicip        debug
-con://cht3_GEjQWyMW9LEk7KQfg  demo-v2-con-1-amer  1          1       4.4.0-2765  10.1.4.206     12.123.123.123  Y
-con://Wy0Y6FrwQ66yQzLBAInC4w  demo-v2-con-2-amer  1          1       4.4.0-2765  10.1.4.172     12.123.123.123  Y
-con://dK0f1UvhR7i8-RByABDXaQ  demo-v2-con-4-emea  1          1       4.4.0-2765  192.168.1.90   12.123.12.12    N
-con://Ihmf51dASo-R1P37hzaP3Q  demo-v2-con-3-emea  1          1       4.4.0-2765  192.168.1.235  12.123.12.12    N
-con://XiCmu80xQcSWnaeQcvH8Vg  demo-v2-con-5-apj   1          1       4.4.0-2765  192.168.1.228  12.123.123.12   Y
-con://pkGjL5OgSjyHoymMguvp9Q  demo-v2-con-6-apj   1          1       4.4.0-2765  192.168.1.144  12.123.123.12   Y
-con://NAWSlptPSXOjq-bk2-EQPw  demo-v2-con-10-rus  1          1       4.4.0-2765  10.3.0.101     12.123.123.12   Y
-con://e_0nShZBQ7esNAC3ZEkhSQ  demo-v2-con-3-amer  1          1       4.4.0-2765  10.1.4.83      12.123.123.123  Y
-con://OEe9o-n2S_aMeZpLxgwG0A  tmelab-sfo          1          1       4.4.0-2765  192.168.2.101  12.123.123.12   Y
-```
-
-To integrate connector health into your monitoring system, use the `--perf` option.
-`akamai eaa c list --perf`
-This provides 7 extra columns:
-- CPU usage (%)
-- Memory usage (%)
-- Network Traffic (Mbps)
-- Total of dialout connections
-- Idle dialout connections
-- Active dialout connections
-
-To correlate with applications served by each connector, use the `--showapps` argument to include a list of the application FQDNs as an array in the JSON response.
-
-#### Swapping connectors
-
-If you are doing a maintenance on an hypervizor, you may need to swap out 2 connectors.
-The current implement look for all the apps, add the new connector, remove the old one.
-The application is marked as ready to update.
-
-Caveats (let us know if you need it):
-- This doesn't perform swap for directory
-- There is no option to automatically redeploy the impacted application after the swap
-
-Example:
-```
-$ akamai eaa connector con://e_0nShZBQ7esNAC3ZEkhSQ swap con://cht3_GEjQWyMW9LEk7KQfg
-#Operation,connector-id,connector-name,app-id,app-name
-+,con://cht3_GEjQWyMW9LEk7KQfg,demo-v2-con-1-amer,app://nSFDNGYARHeZGNlweIX7Wg,Speedtest (v2.1)
--,con://e_0nShZBQ7esNAC3ZEkhSQ,demo-v2-con-3-amer,app://nSFDNGYARHeZGNlweIX7Wg,Speedtest (v2.1)
-Connector swapped in 1 application(s).
-Updated application(s) is/are marked as ready to deploy
-```
+See [akamai eaa connectors](docs/commands/akamai-eaa-connector.md) command line doc and examples.
 
 ### Certificate management
 

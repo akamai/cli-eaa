@@ -1,4 +1,4 @@
-# Copyright 2021 Akamai Technologies, Inc. All Rights Reserved
+# Copyright 2024 Akamai Technologies, Inc. All Rights Reserved
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -38,6 +38,7 @@ Test with pytest-html
 See also https://pytest-html.readthedocs.io/en/latest/
 
 .. code-block:: bash
+   pip install pytest-html
    cd test
    # Specify the test app URL to generate traffic against
    URL_TEST_TRAFFIC=https://login:password@myclassicapp.go.akamai-access.com pytest --html=report.html --self-contained-html test.py
@@ -322,6 +323,32 @@ class TestConnectors(CliEAATest):
             CliEAATest.cli_print("stderr>", l)
         self.assertGreater(len(stdout), 0, "No connector health output")
 
+    def test_connector_allowlist_ipcidr(self):
+        cmd = self.cli_run('-d', '-v', 'c', 'allowlist')
+        stdout, stderr = cmd.communicate(timeout=50.0)
+        for l in stdout.splitlines():
+            CliEAATest.cli_print("stdout>", l)
+        for l in stderr.splitlines():
+            CliEAATest.cli_print("stderr>", l)
+        self.assertGreater(len(stdout), 0, "No allowlist IP/CIDR output")
+
+    def test_connector_allowlist_fqdn(self):
+        cmd = self.cli_run('-d', '-v', 'c', 'allowlist', '--fqdn')
+        stdout, stderr = cmd.communicate(timeout=50.0)
+        for l in stdout.splitlines():
+            CliEAATest.cli_print("stdout>", l)
+        for l in stderr.splitlines():
+            CliEAATest.cli_print("stderr>", l)
+        self.assertGreater(len(stdout), 0, "No allowlist hostname output")
+
+    def test_connector_allowlist_sincetime(self):
+        cmd = self.cli_run('-d', '-v', 'c', 'allowlist', '--since-time', '2000-01-01T00:00:00.0000000Z')
+        stdout, stderr = cmd.communicate(timeout=50.0)
+        for l in stdout.splitlines():
+            CliEAATest.cli_print("stdout>", l)
+        for l in stderr.splitlines():
+            CliEAATest.cli_print("stderr>", l)
+        self.assertGreater(len(stdout), 0, "No allowlist IP/CIDR output with change set before Jan 1, 2000")
 
 class TestIdentity(CliEAATest):
 

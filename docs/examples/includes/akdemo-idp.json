@@ -1,0 +1,8 @@
+{
+    "client_cert_auth": "false",
+    "client_cert_user_param": "",
+    "dp_enabled": "true",
+    "idp_id": "abc",
+    "name": "Global IdP",
+    "type": 2
+}

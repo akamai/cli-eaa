@@ -21,6 +21,8 @@ import datetime
 from functools import lru_cache
 import io
 import csv
+from dateutil.parser import parse
+import pytz
 
 
 from common import cli, BaseAPI, EAAItem
@@ -247,19 +249,27 @@ class ConnectorAPI(BaseAPI):
     def allow_list(self):
         """
         Print the Connector Allow List of endpoint (IP/CIDR or host)
-        as a CSV
+        as a CSV output.
         """
+        later_than = None
+        if self._config.since_time:
+            later_than = parse(self._config.since_time)
+            if not later_than.tzname():
+                later_than = pytz.utc.localize(later_than)
+
         csv_output = io.StringIO()
         ep_fmt = "IP/CIDR"
         if self._config.fqdn:
             ep_fmt = "FQDN"
 
-        fieldnames = ['Location', 'Protocol', ep_fmt, 'Update']
+        fieldnames = ['Location', 'Protocol', ep_fmt, 'LastUpdate']
         csv_writer = csv.writer(csv_output, quoting=csv.QUOTE_MINIMAL)
         csv_writer.writerow(fieldnames)
-        r = self.get("/crux/v1/zt/outboundallowlist")
-        # logging.error(r.json())
+        r = self.get("zt/outboundallowlist")
         for l in r.json():
+            d = datetime.datetime.fromisoformat(l.get('modifiedDate'))
+            if later_than and d < later_than:
+                continue
             if self._config.fqdn:
                 hosts = l.get('host').split(",")
                 gen = (h for h in hosts if h not in ('-', ))

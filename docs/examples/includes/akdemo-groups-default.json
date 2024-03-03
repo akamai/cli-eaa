@@ -1,0 +1,27 @@
+[
+    {
+        "name": "Sales Department",
+        "enable_mfa": "inherit",
+        "uuid_url": "16nUm7dCSyiihfCvMiXXXX"
+    },
+    {
+        "name": "IT Department",
+        "enable_mfa": "inherit",
+        "uuid_url": "yvjnNqoDQt2P0S1Q2eXXXX"
+    },
+    {
+        "name": "Marketing Department",
+        "enable_mfa": "inherit",
+        "uuid_url": "CxhdrFKnQG2mBSUBV9XXXX"
+    },
+    {
+        "name": "Engineering Department",
+        "enable_mfa": "inherit",
+        "uuid_url": "zueKU3XmTsm9jGw7RsXXXX"
+    },
+    {
+        "name": "Domain Users",
+        "enable_mfa": "inherit",
+        "uuid_url": "iOlcvuOgSmCYaYDgvpXXXX"
+    }
+]

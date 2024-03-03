@@ -169,6 +169,8 @@ class EdgeGridConfig():
         #     help='Show only endpoints being used')
         allowlist_parser.add_argument('--fqdn', dest="fqdn", action="store_true", default=False, 
             help='Show Hostname instead of IP/CIDR')
+        allowlist_parser.add_argument('--since-time', dest="since_time", default=None, 
+            help='Only print endpoints updated after a specific date (RFC3339)')
 
 
         subparsers.add_parser('idp', aliases=["i"], help='Manage EAA Identity Providers')
