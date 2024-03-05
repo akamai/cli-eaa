@@ -9,3 +9,4 @@ __pycache__
 *.swp
 tags
 docs/examples/includes.akdemo/*
+*.env

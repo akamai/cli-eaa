@@ -169,7 +169,7 @@ class ApplicationAPI(BaseAPI):
         # hence the two expand parameters
         url_params = {}
         if expand:
-            url_params = {'expand': 'true', 'expand_sdk': 'true'}
+            url_params = {'expand': expand, 'expand_sdk': expand}
         url = 'mgmt-pop/apps/{applicationId}'.format(applicationId=app_moniker.uuid)
         result = self.get(url, params=url_params)
         app_config = result.json()
@@ -591,9 +591,10 @@ class ApplicationAPI(BaseAPI):
         if deploy.status_code != 200:
             logger.error(deploy.text)
 
-    def list(self):
+    def list(self, details=False):
         """
         List all applications (experimental)
+        :param details (bool): load the app details (SUPER SLOW)
         """
 
         if self.api_ver != BaseAPI.API_Version.OpenAPIv3:
@@ -610,11 +611,35 @@ class ApplicationAPI(BaseAPI):
             r = self.get('mgmt-pop/apps', params={"offset": offset, "fields": "uuid_url", 
                                                   "limit": page_size, "offset": (page-1)*page_size})
             j = r.json()
-            print(j.get('meta'))
             total_count = j.get('meta').get('total_count')
             page += 1
             for a in j.get('objects'):
-                # app = app_config_loader.load(EAAItem(f"app://{a.get('uuid_url')}"), expand=False)
-                l.append(a)
-
+                if details:
+                    l.append(app_config_loader.load(EAAItem(f"app://{a.get('uuid_url')}"), expand=False))
+                else:
+                    l.append(a)
         return l
+
+    def stats_by_cloudzone(self):
+        if self.api_ver != BaseAPI.API_Version.OpenAPIv3:
+            raise Exception("Unsupported API version")
+
+        appcount_by_cloudzone = {}
+        for a in self.list(True):
+            scanned_cloudzone = a.get('popRegion')
+            if scanned_cloudzone not in appcount_by_cloudzone.keys():
+                appcount_by_cloudzone[scanned_cloudzone] = 0
+            appcount_by_cloudzone[scanned_cloudzone] += 1
+        return appcount_by_cloudzone
+    
+    def entdns_stats_by_cloudzone(self):
+        "Special app 'Enterprise DNS'."
+        entdns_count_by_cloudzone = {}
+        r = self.get("mgmt-pop/childdns?limit=0")
+        entdns_response = r.json()
+        for e in entdns_response.get('objects'):
+            scanned_cloudzone = e.get('popRegion')
+            if scanned_cloudzone not in entdns_count_by_cloudzone.keys():
+                entdns_count_by_cloudzone[scanned_cloudzone] = 0
+            entdns_count_by_cloudzone[scanned_cloudzone] += 1
+        return entdns_count_by_cloudzone

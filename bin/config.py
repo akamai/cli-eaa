@@ -93,6 +93,7 @@ class EdgeGridConfig():
         syncgrp_parser.add_argument("--retry", "-r", type=int, default=0, help=argparse.SUPPRESS)
         # New: akamai eaa app xyz add_dnsexception www.abcd.efg
         #      akamai eaa app xyz del_dnsexception www.abcd.efg
+        
         app_parser = subparsers.add_parser('app', aliases=["a"], help='Manage EAA applications')
         app_parser.add_argument(dest='application_id', help="Application ID, AppGroup ID or '-'")
         subsub = app_parser.add_subparsers(dest="action", help='Application action')
@@ -165,8 +166,10 @@ class EdgeGridConfig():
             help='Dry run mode')
         allowlist_parser = subsub.add_parser("allowlist", 
             help="Dump EAA Cloud Endpoint for Firewall/Proxy/Network Security equipement")
-        # allowlist_parser.add_argument('--configured', dest="only_configured", action="store_true", default=False, 
-        #     help='Show only endpoints being used')
+        allowlist_parser.add_argument('--skip-header', dest="skip_header", action="store_true", default=False, 
+            help='Do not print CSV header (first row)')
+        allowlist_parser.add_argument('--used', dest="only_used", action="store_true", default=False, 
+            help='Show only endpoints being used by your EAA configurations')
         allowlist_parser.add_argument('--fqdn', dest="fqdn", action="store_true", default=False, 
             help='Show Hostname instead of IP/CIDR')
         allowlist_parser.add_argument('--since-time', dest="since_time", default=None, 
@@ -175,7 +178,9 @@ class EdgeGridConfig():
 
         subparsers.add_parser('idp', aliases=["i"], help='Manage EAA Identity Providers')
 
-        subparsers.add_parser('info', help='Display tenant info')
+        info_parser = subparsers.add_parser('info', help='Display tenant info (cloud zone)')
+        info_parser.add_argument("--show-usage", dest="show_usage", action="store_true", default=False, 
+                                 help="Show configuration count using each cloud zone")
 
         dp_parser = subparsers.add_parser('dp', help='Device Posture')
         dp_parser.add_argument("dpcommand", choices=['inventory'], default="inventory")

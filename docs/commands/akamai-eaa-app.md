@@ -11,17 +11,19 @@ Alias: `a`
 - [Find and save an application](#find-and-save-an-application)
 - [Restore the application](#restore-the-application)
 - [Delete an application](#delete-an-application)
-- [Create an application](#create-an-application)
+- [Create an new application configuration](#create-an-new-application-configuration)
   - [Basic](#basic)
   - [Variables and functions in the JSON configuration file](#variables-and-functions-in-the-json-configuration-file)
-  - [Templating](#templating)
+  - [Configuration templating](#configuration-templating)
 - [Functions \& variables](#functions--variables)
-  - [include(path\_to\_file)](#includepath_to_file)
-  - [AppProfile](#appprofile)
-  - [AppType](#apptype)
-  - [AppDomainType](#appdomaintype)
-  - [cli\_certificate(CN)](#cli_certificatecn)
-  - [cli\_cloudzone(cloudzone\_name)](#cli_cloudzonecloudzone_name)
+  - [Functions](#functions)
+    - [include(path\_to\_file)](#includepath_to_file)
+    - [cli\_certificate(common\_name)](#cli_certificatecommon_name)
+    - [cli\_cloudzone(cloudzone\_name)](#cli_cloudzonecloudzone_name)
+  - [Enumeration variables](#enumeration-variables)
+    - [AppProfile](#appprofile)
+    - [AppType](#apptype)
+    - [AppDomainType](#appdomaintype)
 
 
 ## Find and save an application
@@ -37,27 +39,31 @@ You can save the application locally:
 $ akamai eaa app app://mD_Pw1XASpyVJc2JwgICTg > ~/eaa_app_datascience_v3.json
 ```
 
+Quickly walk through the JSON tree using `jq`.
+
+```bash
+$ akamai eaa -b app app://mD_Pw1XASpyVJc2JwgICTg | jq .advanced_settings.websocket_enabled
+"true"
+```
+
+
 ## Restore the application
+
+Use the `update` keyword.
 
 ```
 $ cat ~/eaa_app_datascience_v3.json | akamai eaa app app://mD_Pw1XASpyVJc2JwgICTg update
 ```
 
-Or quickly walk through the JSON tree using `jq`.
-```
-$ akamai eaa -b app app://mD_Pw1XASpyVJc2JwgICTg | jq .advanced_settings.websocket_enabled
-"true"
-```
-
 ## Delete an application
 
 ```
-akamai eaa app app://mD_Pw1XASpyVJc2JwgICTg delete
+$ akamai eaa app app://mD_Pw1XASpyVJc2JwgICTg delete
 ```
 
 Deploy an application, you can optionally add a comment to keep track of the change:
 ```
-akamai eaa app app://mD_Pw1XASpyVJc2JwgICTg deploy --comment "[TICKET1234] Update service account credentials"
+$ akamai eaa app app://mD_Pw1XASpyVJc2JwgICTg deploy --comment "[TICKET1234] Update service account credentials"
 ```
 
 Finding an application using a specific connector name: 
@@ -87,33 +93,34 @@ $ akamai eaa app app://app-uuid-1 attach con://connector-uuid-1 con://connector-
 $ akamai eaa app app://app-uuid-1 detach con://connector-uuid-1 con://connector-uuid-2
 ```
 
-## Create an application
+## Create an new application configuration
 
 ### Basic
 
-You need to pass a JSON file of the application you need to created.
+You need to pass the application configuration JSON to the CLI using a pipe.
 
 ```
-% cat your-new-app.json | akamai eaa app - create
+$ cat your-new-app.json | akamai eaa app - create
 ```
 
 ### Variables and functions in the JSON configuration file
 
 You can use variables and functions inside the JSON file thanks
 to the Jinja templating engine. Variables are surrouded by double
-curly braces, and functions/assignements open with `{%` and closes
+curly braces, and functions/assignements open with `{%` and close
 with `%}`. 
 
 Read more about [Jinja][(https://jinja.palletsprojects.com/en/3.1.x/](https://jinja.palletsprojects.com/en/latest/)).
 
-Variable can be set within the JSON file, or external with the `--var <var_name> <var_value>` argument after the `create`.
+Variables can be set within the JSON file, or externally using 
+`--var <var_name> <var_value>` argument after the `create`.
 
-Example `cat webapp.json.j2 | akamai eaa app create --var DUMMY VALUE` will allow to use DUMMY inside the code: `{{ DUMMY }}`
+Example `cat webapp.json.j2 | akamai eaa app create --var MYVARIABLE VALUE` will allow to use DUMMY inside the code: `{{ MYVARIABLE }}`.
 
 <details>
 <summary>Example of an EAA configuration with variables and functions:</summary>
 
-```json
+```jinja
 {
     "eaa_cli_comment": [
         "This is an example of JSON with variables/functions",
@@ -173,7 +180,7 @@ Example `cat webapp.json.j2 | akamai eaa app create --var DUMMY VALUE` will allo
 
 More example available in the [docs/examples](../examples/) directory.
 
-### Templating
+### Configuration templating
 
 Many parts of EAA configuration can be repeated accross multiple applications.
 To save you time on generating the JSON files, you can use the Jinja2 templating.
@@ -182,11 +189,14 @@ Jinja is a templating engine adopted by tools like Ansible.
 We recommend to start by saving locally a configuration you created with Akamai 
 Control Center/Enterprise Center, and start splitting it into smaller file you include.
 
-Templating is very powerful and you might run into syntax error. We recommend to use the `-d` option right after the `akamai eaa` command to troubleshoot what's happening.
+Templating is very powerful and you might run into syntax error. We recommend to use 
+the `-d` option right after the `akamai eaa` command to troubleshoot.
 
 ## Functions & variables
 
-### include(path_to_file) 
+### Functions
+
+#### include(path_to_file) 
 
 This is a Jinja Built-in function.
 
@@ -197,11 +207,11 @@ passing it on to the EAA API.
 The path will be relative to where the cli command is being executed.
 
 Example:
-```json
-    "idp": {% include 'includes/my-idp.json' %},
+```jinja
+"idp": {% include 'includes/my-idp.json' %}
 ```
 
-Where `my-idp.json` will contain:
+Where `includes/my-idp.json` will contain:
 ```json
 {
     "client_cert_auth": "false",
@@ -213,27 +223,38 @@ Where `my-idp.json` will contain:
 }
 ```
 
-### AppProfile
-
-This is the string that indicate what type of application configuration (Web app, Tunnel App...).
-The enum will set the attribute/key `app_profile` of the application configuration.
-Must use with the `.value`:
-
-```jinja
-"app_profile": {{ AppProfile.HTTP.value }}
-```
-
-### AppType
-
-### AppDomainType
-
-### cli_certificate(CN)
+#### cli_certificate(common_name)
 
 Lookup the custom certification with corresponding common name (CN)
 inside the EAA Custom Certificate Store.  
 This will set the attribute/key `cert` of the application configuration.
 
-### cli_cloudzone(cloudzone_name)
+#### cli_cloudzone(cloudzone_name)
 
 Will return the cloudzone UUID.  
 This will set the attribute/key `pop` of the application configuration.
+
+### Enumeration variables
+
+#### AppProfile
+
+This is the string that indicate what type of application configuration (Web app, Tunnel App...).
+The enum will set the attribute/key `app_profile` of the application configuration.
+
+You must use the variable with `.value` to translate from human readable to an integer EAA API can understand:
+
+```jinja
+"app_profile": {{ AppProfile.HTTP.value }}
+```
+
+#### AppType
+
+```jinja
+"app_type": {{ AppType.Tunnel.value }}
+```
+
+#### AppDomainType
+
+```jinja
+"app_type": {{ AppDomainType.Akamai.value }}
+```

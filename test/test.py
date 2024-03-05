@@ -159,7 +159,7 @@ class TestEvents(CliEAATest):
         """
         Generate some traffic against a webapp defined
         """
-        delay = 30
+        delay = 60
         url = os.getenv('URL_TEST_TRAFFIC')
         if url:
             CliEAATest.cli_print(f"Test fingerprint: {id(cls):x}")
@@ -179,6 +179,7 @@ class TestEvents(CliEAATest):
         """
         Fetch User Access log events (RAW format)
         """
+        self.assertNotEqual(os.environ.get('URL_TEST_TRAFFIC'), "", "set URL_TEST_TRAFFIC env for this test")
         cmd = self.cli_run("log", "access", "--start", self.after, "--end", self.before)
         stdout, stderr = cmd.communicate(timeout=60)
         events = stdout.decode(encoding)
@@ -190,11 +191,12 @@ class TestEvents(CliEAATest):
         """
         Fetch User Access log events (RAW format) using the API v2 introduced in EAA 2021.02
         """
-        cmd = self.cli_run("log", "access", "-2", "--start", self.after, "--end", self.before)
+        self.assertNotEqual(os.environ.get('URL_TEST_TRAFFIC'), "", "set URL_TEST_TRAFFIC env for this test")
+        cmd = self.cli_run("log", "access", "--start", self.after, "--end", self.before)
         stdout, stderr = cmd.communicate(timeout=60)
         events = stdout.decode(encoding)
         event_count = len(events.splitlines())
-        self.assertGreater(event_count, 0, "We expect at least one user access event, set URL_TEST_TRAFFIC env")
+        self.assertGreater(event_count, 0, "We expect at least one user access event")
         self.assertEqual(cmd.returncode, 0, 'return code must be 0')
 
     def test_admin_log_raw(self):
@@ -232,7 +234,7 @@ class TestEvents(CliEAATest):
         """
         Fetch User Access log events (JSON format)
         """
-        cmd = self.cli_run("log", "access", "-2", "--start", self.after, "--end", self.before, "--json")
+        cmd = self.cli_run("log", "access", "--start", self.after, "--end", self.before, "--json")
         stdout, stderr = cmd.communicate(timeout=60)
         scanned_events = stdout.decode(encoding)
         lines = scanned_events.splitlines()
@@ -420,6 +422,15 @@ class TestCliEAA(CliEAATest):
         cmd = self.cli_run('info')
         stdout, stderr = cmd.communicate()
         self.assertEqual(cmd.returncode, 0, 'return code must be 0')
+
+    def test_cli_info_usage(self):
+        """
+        Display tenant info with usage details
+        """
+        cmd = self.cli_run('info', '--show-usage')
+        stdout, stderr = cmd.communicate(timeout=120)
+        self.assertEqual(cmd.returncode, 0, 'return code must be 0')
+
 
 if __name__ == '__main__':
     unittest.main()

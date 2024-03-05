@@ -56,3 +56,21 @@ class IdentityProviderAPI(BaseAPI):
         if deploy_idp.status_code != 200:
             raise Exception("Error deploying IdP %s HTTP %s" %
                             (idp_moniker, deploy_idp.status_code))
+
+    def stats_by_pop(self):
+        """
+        Build a dictionnary with key being the EAA POP name, 
+        and value the number of IdP configuration deployed.
+        """
+        idp_by_pop_uuid = {}
+        url_params = {'limit': MAX_RESULT}
+        search_idp = self.get('mgmt-pop/idp', params=url_params)
+        idps = search_idp.json()
+
+        for idp in idps.get('objects'):
+            pop_uuid = idp.get('pop')
+            if not pop_uuid in idp_by_pop_uuid.keys():
+                idp_by_pop_uuid[pop_uuid] = 0
+            idp_by_pop_uuid[pop_uuid] += 1
+
+        return idp_by_pop_uuid

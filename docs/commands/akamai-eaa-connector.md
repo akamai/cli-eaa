@@ -86,6 +86,25 @@ Updated application(s) is/are marked as ready to deploy
 
 ## Show connector outbound allowlist IP/CIDR or hostnames
 
+By default the command will generate a CSV on stdout with the following fields:
+- Service name
+- Location
+- Protocol/Port
+- IP/CIDR
+- Last time the item was added/updated (RFC 3339)
+- Number of apps consuming the Data Path + Location, requires `--used`
+
+The first row is the CSV header
+
+If `--fqdn` is used, will display only the hostname (some may come with wildcard) for Layer-7 capable security equipement such as HTTPS/TLS web proxies.
+
+List of Akamai Cloud Service Endpoints by IP/CIDR
 ```
 % akamai eaa connector allowlist
+```
+
+List of Akamai Cloud Service Endpoints by hostnames
+
+```
+% akamai eaa connector allowlist --fqdn
 ```
