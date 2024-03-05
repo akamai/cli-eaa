@@ -106,9 +106,7 @@ $ cat your-new-app.json | akamai eaa app - create
 ### Variables and functions in the JSON configuration file
 
 You can use variables and functions inside the JSON file thanks
-to the Jinja templating engine. Variables are surrouded by double
-curly braces, and functions/assignements open with `{%` and close
-with `%}`. 
+to the Jinja templating engine.
 
 Read more about [Jinja][(https://jinja.palletsprojects.com/en/3.1.x/](https://jinja.palletsprojects.com/en/latest/)).
 
