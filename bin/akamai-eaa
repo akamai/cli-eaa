@@ -160,11 +160,48 @@ class ReportingAPI(BaseAPI):
             ))
         cli.footer("%s unique EAA Clients checked-in in the last 30 days" % count)
 
+
+    @staticmethod
+    def facility_from_popname(pop_name):
+        """
+        Crudly derive the facility based on the POP name.
+        """
+        facility = "AWS"
+        if "-LIN-" in pop_name:
+            facility = "Akamai Cloud Compute (formerly Linode)"
+        return facility
+
     def tenant_info(self):
+        """
+        Display tenant info/stats.
+        """
         info = {"cloudzones": []}
         resp = self.get('mgmt-pop/pops?shared=true')
+
+        if self._config.show_usage:
+            app_apiv3 = ApplicationAPI(self._config, BaseAPI.API_Version.OpenAPIv3)
+            app_api = ApplicationAPI(self._config, BaseAPI.API_Version.OpenAPI)
+            idp_api = IdentityProviderAPI(self._config)
+            app_by_cz = app_apiv3.stats_by_cloudzone()
+            entdns_by_cz = app_api.entdns_stats_by_cloudzone()
+            idp_by_pop = idp_api.stats_by_pop()
+
+        scanned_cz = []
         for eaa_cloudzone in resp.json().get('objects'):
-            info['cloudzones'].append(eaa_cloudzone.get('region'))
+            cz_info = {
+                "name": eaa_cloudzone.get('region'),
+                "facility": ReportingAPI.facility_from_popname(eaa_cloudzone.get('name')),
+            }
+            if self._config.show_usage:
+                cz_info["count_idp"] = idp_by_pop.get(eaa_cloudzone.get('uuid_url'), 0)
+                cz_info["count_app"] = app_by_cz.get(eaa_cloudzone.get('region'), 0)
+                cz_info["count_entdns"] = entdns_by_cz.get(eaa_cloudzone.get('region'), 0)
+
+            scanned_cz.append(cz_info)
+
+        # sort by Cloud Zone name
+        info['cloudzones'] = sorted(scanned_cz, key=lambda x: x['name'])
+
         print(dumps(info, indent=4))
 
     def deviceposture_inventory(self, follow=False, interval=300):
@@ -272,7 +309,7 @@ if __name__ == "__main__":
         elif config.command in ("app", "a"):
             a = ApplicationAPI(config)
             a.process_command()
-        elif config.command in ("connector", "c"):
+        elif config.command in ("connector", "c", "con"):
             c = ConnectorAPI(config)
             perf = hasattr(config, 'perf') and config.perf
             if config.action == "swap":
@@ -280,6 +317,8 @@ if __name__ == "__main__":
             elif config.action == "apps":
                 con_moniker = EAAItem(config.connector_id)
                 c.list_apps(con_moniker, perf=perf)
+            elif config.action == "allowlist":
+                c.allow_list()
             else:
                 # if command is "akamai eaa connector" we default to "list"
                 # Unless the long form "akamai eaa connector list" is used

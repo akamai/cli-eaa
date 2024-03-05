@@ -74,8 +74,9 @@ class ApplicationAPI(BaseAPI):
         TCP = 1
         Tunnel = 2
 
-    def __init__(self, config):
-        super(ApplicationAPI, self).__init__(config, api=BaseAPI.API_Version.OpenAPI)
+    def __init__(self, config, api=BaseAPI.API_Version.OpenAPI):
+        "Force the config arg to passed on."
+        super(ApplicationAPI, self).__init__(config, api=api)
 
     def process_command(self):
         """
@@ -168,34 +169,36 @@ class ApplicationAPI(BaseAPI):
         # hence the two expand parameters
         url_params = {}
         if expand:
-            url_params = {'expand': 'true', 'expand_sdk': 'true'}
+            url_params = {'expand': expand, 'expand_sdk': expand}
         url = 'mgmt-pop/apps/{applicationId}'.format(applicationId=app_moniker.uuid)
         result = self.get(url, params=url_params)
         app_config = result.json()
 
-        # Merge application groups info and align the view
-        # to match the structure expected in save operation
-        groups_url = 'mgmt-pop/apps/{applicationId}/groups'.format(applicationId=app_moniker.uuid)
-        groups_result = self.get(groups_url, params={'limit': 0})
-        groups = groups_result.json()
-        app_config['groups'] = []
-        for g in groups.get('objects', []):
-            app_config['groups'].append(
-                {
-                    'name': g.get('group', {}).get('name'),
-                    'enable_mfa': g.get('enable_mfa', 'inherit'),
-                    'uuid_url': g.get('group', {}).get('group_uuid_url')
-                }
-            )
+        if expand:
 
-        # Merge URL path-based policies and align the view
-        # to match the structure expected in save operation
-        upp_url = 'mgmt-pop/apps/{applicationId}/urllocation'
-        upp_result = self.get(upp_url.format(applicationId=app_moniker.uuid), params={'limit': 0})
-        upp = upp_result.json()
-        app_config['urllocation'] = []
-        for upp_rule in upp.get('objects', []):
-            app_config['urllocation'].append(upp_rule)
+            # Merge application groups info and align the view
+            # to match the structure expected in save operation
+            groups_url = 'mgmt-pop/apps/{applicationId}/groups'.format(applicationId=app_moniker.uuid)
+            groups_result = self.get(groups_url, params={'limit': 0})
+            groups = groups_result.json()
+            app_config['groups'] = []
+            for g in groups.get('objects', []):
+                app_config['groups'].append(
+                    {
+                        'name': g.get('group', {}).get('name'),
+                        'enable_mfa': g.get('enable_mfa', 'inherit'),
+                        'uuid_url': g.get('group', {}).get('group_uuid_url')
+                    }
+                )
+
+            # Merge URL path-based policies and align the view
+            # to match the structure expected in save operation
+            upp_url = 'mgmt-pop/apps/{applicationId}/urllocation'
+            upp_result = self.get(upp_url.format(applicationId=app_moniker.uuid), params={'limit': 0})
+            upp = upp_result.json()
+            app_config['urllocation'] = []
+            for upp_rule in upp.get('objects', []):
+                app_config['urllocation'].append(upp_rule)
 
         return app_config
 
@@ -587,3 +590,56 @@ class ApplicationAPI(BaseAPI):
         logger.info("ApplicationAPI: deploy app response: %s" % deploy.status_code)
         if deploy.status_code != 200:
             logger.error(deploy.text)
+
+    def list(self, details=False):
+        """
+        List all applications (experimental)
+        :param details (bool): load the app details (SUPER SLOW)
+        """
+
+        if self.api_ver != BaseAPI.API_Version.OpenAPIv3:
+            raise Exception("Unsupported API version")
+
+        total_count = None
+        page = 1
+        page_size = 25
+        offset = 0
+        l = []
+
+        app_config_loader = ApplicationAPI(self._config, BaseAPI.API_Version.OpenAPI)
+        while total_count == None or len(l) < total_count:
+            r = self.get('mgmt-pop/apps', params={"offset": offset, "fields": "uuid_url", 
+                                                  "limit": page_size, "offset": (page-1)*page_size})
+            j = r.json()
+            total_count = j.get('meta').get('total_count')
+            page += 1
+            for a in j.get('objects'):
+                if details:
+                    l.append(app_config_loader.load(EAAItem(f"app://{a.get('uuid_url')}"), expand=False))
+                else:
+                    l.append(a)
+        return l
+
+    def stats_by_cloudzone(self):
+        if self.api_ver != BaseAPI.API_Version.OpenAPIv3:
+            raise Exception("Unsupported API version")
+
+        appcount_by_cloudzone = {}
+        for a in self.list(True):
+            scanned_cloudzone = a.get('popRegion')
+            if scanned_cloudzone not in appcount_by_cloudzone.keys():
+                appcount_by_cloudzone[scanned_cloudzone] = 0
+            appcount_by_cloudzone[scanned_cloudzone] += 1
+        return appcount_by_cloudzone
+    
+    def entdns_stats_by_cloudzone(self):
+        "Special app 'Enterprise DNS'."
+        entdns_count_by_cloudzone = {}
+        r = self.get("mgmt-pop/childdns?limit=0")
+        entdns_response = r.json()
+        for e in entdns_response.get('objects'):
+            scanned_cloudzone = e.get('popRegion')
+            if scanned_cloudzone not in entdns_count_by_cloudzone.keys():
+                entdns_count_by_cloudzone[scanned_cloudzone] = 0
+            entdns_count_by_cloudzone[scanned_cloudzone] += 1
+        return entdns_count_by_cloudzone

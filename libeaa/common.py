@@ -26,7 +26,7 @@ import base64
 import hmac
 import hashlib
 from urllib.parse import urljoin, parse_qs
-from enum import Enum
+from enum import Enum, IntEnum
 
 # 3rd party libs
 import six
@@ -185,10 +185,11 @@ class EAAItem(object):
 
 class BaseAPI(object):
 
-    class API_Version(Enum):
+    class API_Version(IntEnum):
         "API backend, either Legacy or {OPEN} API (support introduced in 2020 for EAA)."
         Legacy = 1
-        OpenAPI = 2
+        OpenAPI = 2,
+        OpenAPIv3 = 3
 
     def __init__(self, config=None, api=API_Version.Legacy):
 
@@ -216,7 +217,10 @@ class BaseAPI(object):
             )
             self._session.mount("https://", siem_api_adapter)
         else:  # EAA {OPEN} API
-            self._baseurl = 'https://%s/crux/v1/' % edgerc.get(section, 'host')
+            if self.api_ver == self.API_Version.OpenAPI:
+                self._baseurl = f'https://%s/crux/v1/' % edgerc.get(section, 'host')
+            elif self.api_ver == self.API_Version.OpenAPIv3:
+                self._baseurl = f'https://%s/crux/v3/' % edgerc.get(section, 'host')
             self._session = requests.Session()
             self._session.auth = EdgeGridAuth.from_edgerc(edgerc, section)
             # Handle extra querystring to send to all REST requests
