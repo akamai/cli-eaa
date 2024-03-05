@@ -84,11 +84,7 @@ See [`akamai eaa certificate` documentation page](docs/commands/akamai-eaa-certi
 
 ### Device Posture Inventory
 
-Pipe the result of the inventory into `jq` to display only device ID, name and user_id:
-
-```bash
-$ akamai eaa dp inventory | jq '.[] | {device_id, device_name, user_id}'
-```
+See [`akamai eaa dp` documentation page](docs/commands/akamai-eaa-dp.md).
 
 ## Known Limitations
 
