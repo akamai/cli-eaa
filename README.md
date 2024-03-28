@@ -26,11 +26,12 @@
 
 [Enterprise Application Access (EAA)](https://www.akamai.com/us/en/products/security/enterprise-application-access.jsp) comes with a full suite of APIs. 
 To interact with the service, you can: 
-- write scripts
+- write your own scripts
 - use [Postman](https://developer.akamai.com/authenticate-with-postman) 
-- use [Akamai CLI](https://developer.akamai.com/cli) to run common operations directly from the command line, no coding required. 
+- use [Terraform EAA](https://github.com/akamai/terraform-eaa)
+- ... or use [Akamai CLI](https://developer.akamai.com/cli) to run common operations directly from the command line, no coding required. 
 
-This can be helpful if you plan to consume EAA logs into your favorite SIEM or automate your workflow with Bash, Powershell or a deployment solution like Ansible.
+This can be helpful if you plan to consume EAA logs into your favorite SIEM or automate your workflow with Bash, Powershell, a deployment solution like Ansible, or a CI/CD pipeline.
 
 ## Key features
 
