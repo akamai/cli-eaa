@@ -1,4 +1,4 @@
-# Copyright 2021 Akamai Technologies, Inc. All Rights Reserved
+# Copyright 2024 Akamai Technologies, Inc. All Rights Reserved
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -38,6 +38,7 @@ Test with pytest-html
 See also https://pytest-html.readthedocs.io/en/latest/
 
 .. code-block:: bash
+   pip install pytest-html
    cd test
    # Specify the test app URL to generate traffic against
    URL_TEST_TRAFFIC=https://login:password@myclassicapp.go.akamai-access.com pytest --html=report.html --self-contained-html test.py
@@ -158,7 +159,7 @@ class TestEvents(CliEAATest):
         """
         Generate some traffic against a webapp defined
         """
-        delay = 30
+        delay = 60
         url = os.getenv('URL_TEST_TRAFFIC')
         if url:
             CliEAATest.cli_print(f"Test fingerprint: {id(cls):x}")
@@ -178,6 +179,7 @@ class TestEvents(CliEAATest):
         """
         Fetch User Access log events (RAW format)
         """
+        self.assertNotEqual(os.environ.get('URL_TEST_TRAFFIC'), "", "set URL_TEST_TRAFFIC env for this test")
         cmd = self.cli_run("log", "access", "--start", self.after, "--end", self.before)
         stdout, stderr = cmd.communicate(timeout=60)
         events = stdout.decode(encoding)
@@ -189,11 +191,12 @@ class TestEvents(CliEAATest):
         """
         Fetch User Access log events (RAW format) using the API v2 introduced in EAA 2021.02
         """
-        cmd = self.cli_run("log", "access", "-2", "--start", self.after, "--end", self.before)
+        self.assertNotEqual(os.environ.get('URL_TEST_TRAFFIC'), "", "set URL_TEST_TRAFFIC env for this test")
+        cmd = self.cli_run("log", "access", "--start", self.after, "--end", self.before)
         stdout, stderr = cmd.communicate(timeout=60)
         events = stdout.decode(encoding)
         event_count = len(events.splitlines())
-        self.assertGreater(event_count, 0, "We expect at least one user access event, set URL_TEST_TRAFFIC env")
+        self.assertGreater(event_count, 0, "We expect at least one user access event")
         self.assertEqual(cmd.returncode, 0, 'return code must be 0')
 
     def test_admin_log_raw(self):
@@ -231,7 +234,7 @@ class TestEvents(CliEAATest):
         """
         Fetch User Access log events (JSON format)
         """
-        cmd = self.cli_run("log", "access", "-2", "--start", self.after, "--end", self.before, "--json")
+        cmd = self.cli_run("log", "access", "--start", self.after, "--end", self.before, "--json")
         stdout, stderr = cmd.communicate(timeout=60)
         scanned_events = stdout.decode(encoding)
         lines = scanned_events.splitlines()
@@ -322,6 +325,32 @@ class TestConnectors(CliEAATest):
             CliEAATest.cli_print("stderr>", l)
         self.assertGreater(len(stdout), 0, "No connector health output")
 
+    def test_connector_allowlist_ipcidr(self):
+        cmd = self.cli_run('-d', '-v', 'c', 'allowlist')
+        stdout, stderr = cmd.communicate(timeout=50.0)
+        for l in stdout.splitlines():
+            CliEAATest.cli_print("stdout>", l)
+        for l in stderr.splitlines():
+            CliEAATest.cli_print("stderr>", l)
+        self.assertGreater(len(stdout), 0, "No allowlist IP/CIDR output")
+
+    def test_connector_allowlist_fqdn(self):
+        cmd = self.cli_run('-d', '-v', 'c', 'allowlist', '--fqdn')
+        stdout, stderr = cmd.communicate(timeout=50.0)
+        for l in stdout.splitlines():
+            CliEAATest.cli_print("stdout>", l)
+        for l in stderr.splitlines():
+            CliEAATest.cli_print("stderr>", l)
+        self.assertGreater(len(stdout), 0, "No allowlist hostname output")
+
+    def test_connector_allowlist_sincetime(self):
+        cmd = self.cli_run('-d', '-v', 'c', 'allowlist', '--since-time', '2000-01-01T00:00:00.0000000Z')
+        stdout, stderr = cmd.communicate(timeout=50.0)
+        for l in stdout.splitlines():
+            CliEAATest.cli_print("stdout>", l)
+        for l in stderr.splitlines():
+            CliEAATest.cli_print("stderr>", l)
+        self.assertGreater(len(stdout), 0, "No allowlist IP/CIDR output with change set before Jan 1, 2000")
 
 class TestIdentity(CliEAATest):
 
@@ -393,6 +422,15 @@ class TestCliEAA(CliEAATest):
         cmd = self.cli_run('info')
         stdout, stderr = cmd.communicate()
         self.assertEqual(cmd.returncode, 0, 'return code must be 0')
+
+    def test_cli_info_usage(self):
+        """
+        Display tenant info with usage details
+        """
+        cmd = self.cli_run('info', '--show-usage')
+        stdout, stderr = cmd.communicate(timeout=120)
+        self.assertEqual(cmd.returncode, 0, 'return code must be 0')
+
 
 if __name__ == '__main__':
     unittest.main()

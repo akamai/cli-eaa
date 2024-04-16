@@ -19,6 +19,10 @@ import json
 import signal
 import datetime
 from functools import lru_cache
+import io
+import csv
+from dateutil.parser import parse
+import pytz
 
 
 from common import cli, BaseAPI, EAAItem
@@ -241,6 +245,48 @@ class ConnectorAPI(BaseAPI):
         url_params = {'limit': ApplicationAPI.LIMIT_SOFT, 'expand': 'true'}
         search_app = self.get('mgmt-pop/apps', params=url_params)
         return search_app.json()
+
+    def allow_list(self):
+        """
+        Print the Connector Allow List of endpoint (IP/CIDR or host)
+        as a CSV output.
+        """
+        appcount_by_cloudzone = {}
+        later_than = None
+        if self._config.since_time:
+            later_than = parse(self._config.since_time)
+            if not later_than.tzname():
+                later_than = pytz.utc.localize(later_than)
+
+        if self._config.only_used:
+            app_factory = ApplicationAPI(self._config, BaseAPI.API_Version.OpenAPIv3)
+            appcount_by_cloudzone = app_factory.stats_by_cloudzone()
+
+        csv_output = io.StringIO()
+        ep_fmt = "IP/CIDR"
+        if self._config.fqdn:
+            ep_fmt = "FQDN"
+
+        csv_writer = csv.writer(csv_output, quoting=csv.QUOTE_MINIMAL)
+        if not self._config.skip_header:
+            fieldnames = ['Service', 'Location', 'Protocol', ep_fmt, 'LastUpdate', 'Apps']
+            csv_writer.writerow(fieldnames)
+        r = self.get("zt/outboundallowlist")
+        for l in r.json():
+            d = datetime.datetime.fromisoformat(l.get('modifiedDate'))
+            used_apps = appcount_by_cloudzone.get(l.get('location'))
+            if later_than and d < later_than:
+                continue
+            if self._config.fqdn:
+                hosts = l.get('host').split(",")
+                gen = (h for h in hosts if h not in ('-', ))
+                for h in gen:
+                    csv_writer.writerow([l.get('service'), l.get('location'), l.get('protocol'), h.strip(), l.get('modifiedDate'), used_apps])
+            else:
+                for ip in l.get('ips', []):
+                    csv_writer.writerow([l.get('service'), l.get('location'), l.get('protocol'), ip.get('ip'), ip.get('modifiedDate'), used_apps])
+
+        cli.print(csv_output.getvalue())
 
     def findappbyconnector(self, connector_moniker):
         """
