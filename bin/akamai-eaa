@@ -280,6 +280,9 @@ if __name__ == "__main__":
             elif config.action == "apps":
                 con_moniker = EAAItem(config.connector_id)
                 c.list_apps(con_moniker, perf=perf)
+            elif config.action in ("delete", "rm"):
+                con_moniker = EAAItem(config.connector_id)
+                c.remove(con_moniker)
             else:
                 # if command is "akamai eaa connector" we default to "list"
                 # Unless the long form "akamai eaa connector list" is used

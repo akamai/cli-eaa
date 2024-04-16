@@ -426,6 +426,8 @@ class ApplicationAPI(BaseAPI):
                     "name": upp_rule.get("name"),
                     "url": upp_rule.get("url")
                 }
+                if upp_rule.get("settings"):
+                    upp_create_payload["settings"] = upp_rule.get("settings")
                 upp_create = self.post(upp_url, json=upp_create_payload)
                 upp_create_data = upp_create.json()
                 if upp_create_data.get('uuid_url'):
