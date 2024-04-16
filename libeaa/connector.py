@@ -411,3 +411,16 @@ class ConnectorAPI(BaseAPI):
         else:
             cli.footer("Connector swapped in %s application(s)." % app_processed)
             cli.footer("Updated application(s) is/are marked as ready to deploy")
+
+
+    def remove(self, connector_moniker: EAAItem):
+        "Delete an EAA connector."
+        r = self.delete(f'mgmt-pop/agents/{connector_moniker.uuid}')
+        if r.status_code == 204:
+            cli.print("Connector deleted successfully.")
+            return_code = 0
+        else:
+            cli.print_error(f"Can't delete connector {connector_moniker.uuid}, API returned HTTP/{r.status_code}.")
+            cli.print_error("Use: akamai eaa connector list")
+            return_code = 1
+        cli.exit(return_code)

@@ -162,8 +162,11 @@ class EdgeGridConfig():
         # subparsers.required = False
         swap_parser = subsub.add_parser("swap", help="Swap connector with another one")
         swap_parser.add_argument(dest="new_connector_id", help='New connector ID')
-        swap_parser.add_argument('--dryrun', dest="dryrun", action="store_true", default=False, 
-            help='Dry run mode')
+        swap_parser.add_argument('--dryrun', dest="dryrun", action="store_true", default=False, help='Dry run mode')
+        
+        remove_parser = subsub.add_parser("remove", aliases=["rm"], help="Unregister a connector")
+        remove_parser.add_argument('--force', dest="force", action="store_true", default=False, help='Forcibly remove the connector from apps')
+
         allowlist_parser = subsub.add_parser("allowlist", 
             help="Dump EAA Cloud Endpoint for Firewall/Proxy/Network Security equipement")
         allowlist_parser.add_argument('--skip-header', dest="skip_header", action="store_true", default=False, 
@@ -174,7 +177,6 @@ class EdgeGridConfig():
             help='Show Hostname instead of IP/CIDR')
         allowlist_parser.add_argument('--since-time', dest="since_time", default=None, 
             help='Only print endpoints updated after a specific date (RFC3339)')
-
 
         subparsers.add_parser('idp', aliases=["i"], help='Manage EAA Identity Providers')
 
