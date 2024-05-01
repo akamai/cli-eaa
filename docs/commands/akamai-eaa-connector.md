@@ -12,21 +12,27 @@ Display list of connectors and their status.
 - [List all EAA connectors](#list-all-eaa-connectors)
 - [Swapping connectors](#swapping-connectors)
 - [Show connector outbound allowlist IP/CIDR or hostnames](#show-connector-outbound-allowlist-ipcidr-or-hostnames)
+- [Create a new connector](#create-a-new-connector)
 
 ## Usage
 
 ```
 % akamai eaa connector -h
-usage: akamai eaa connector [-h] [connector_id] {apps,list,swap,allowlist} ...
+usage: akamai eaa connector [-h] [connector_id] {apps,list,swap,remove,rm,create,allowlist} ...
 
 positional arguments:
   connector_id          Connector ID (e.g. con://abcdefghi)
-  {apps,list,swap,allowlist} Connector operation:
+  {apps,list,swap,remove,rm,create,allowlist}
+                        Connector operation
     apps                List applications used by the connector
     list                List all connectors
     swap                Swap connector with another one
-    allowlist           Dump EAA Cloud Endpoint for Firewall/
-                        Proxy/Network Security equipement
+    remove (rm)         Unregister a connector
+    create              Create a new EAA connector
+    allowlist           Dump EAA Cloud Endpoint for Firewall/Proxy/Network Security equipement
+
+options:
+  -h, --help            show this help message and exit
 ```
 
 Tips:
@@ -107,4 +113,15 @@ List of Akamai Cloud Service Endpoints by hostnames
 
 ```
 % akamai eaa connector allowlist --fqdn
+```
+
+## Create a new connector
+
+The command below will create a new connector for Docker and wait a maximum 
+of 10 minutes to get the download URL. The response will be a JSON doc.
+The `download_url` attribute MUST BE tested as it can be `null` even with 
+the `--wait` option.
+
+```
+% akamai eaa create --name MyNewConnector --package Docker --debug --wait 600
 ```

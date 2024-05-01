@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright 2022 Akamai Technologies, Inc. All Rights Reserved
+# Copyright 2024 Akamai Technologies, Inc. All Rights Reserved
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -312,7 +312,9 @@ if __name__ == "__main__":
         elif config.command in ("connector", "c", "con"):
             c = ConnectorAPI(config)
             perf = hasattr(config, 'perf') and config.perf
-            if config.action == "swap":
+            if config.action == "create":
+                c.create(config)
+            elif config.action == "swap":
                 c.swap(config.connector_id, config.new_connector_id, config.dryrun)
             elif config.action == "apps":
                 con_moniker = EAAItem(config.connector_id)

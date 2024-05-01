@@ -1,5 +1,5 @@
 """
- Copyright 2023 Akamai Technologies, Inc. All Rights Reserved.
+ Copyright 2024 Akamai Technologies, Inc. All Rights Reserved.
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
 
@@ -114,7 +114,7 @@ class EdgeGridConfig():
         deploy_parser.add_argument("--comment", "-c", nargs="?", default="Deploy from cli-eaa",
                                    help="Comment for the deployment")
         update_parser = subsub.add_parser("update", help="Update an existing application")
-        update_parser.add_argument('--var', dest="variables", action='append', nargs='+')
+        update_parser.add_argument('--var', dest="variables", action='append', nargs='+', default=[])
         create_parser = subsub.add_parser("create", help="Create a new application")
         create_parser.add_argument('--var', dest="variables", default=[], action='append', nargs='+')
         subsub.add_parser("delete", help="Delete an application")
@@ -166,6 +166,15 @@ class EdgeGridConfig():
         
         remove_parser = subsub.add_parser("remove", aliases=["rm"], help="Unregister a connector")
         remove_parser.add_argument('--force', dest="force", action="store_true", default=False, help='Forcibly remove the connector from apps')
+
+        create_parser = subsub.add_parser("create", help="Create a new EAA connector")
+        create_parser.add_argument('--name', dest="connector_name", help='Name of the connector')
+        create_parser.add_argument('--description', dest="connector_description", help='Description of the connector')
+        create_parser.add_argument('--package', dest="connector_package", help='Package of the connector')
+        create_parser.add_argument('--debug', dest="connector_debug", default=False, action="store_true", help='Debug mode')
+        create_parser.add_argument('--wait', dest="connector_dl_wait", type=int, default=0, 
+                                   help='''Max wait in seconds for the download URL to be available. 
+                                           If set to 0, will provide the connector info immediately after creation''')
 
         allowlist_parser = subsub.add_parser("allowlist", 
             help="Dump EAA Cloud Endpoint for Firewall/Proxy/Network Security equipement")
