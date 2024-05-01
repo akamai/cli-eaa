@@ -1,4 +1,4 @@
-# Copyright 2023 Akamai Technologies, Inc. All Rights Reserved
+# Copyright 2024 Akamai Technologies, Inc. All Rights Reserved
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ import io
 import csv
 from dateutil.parser import parse
 import pytz
-
+from enum import Enum
 
 from common import cli, BaseAPI, EAAItem
 from application import ApplicationAPI
@@ -37,12 +37,25 @@ class ConnectorAPI(BaseAPI):
     LIMIT_SOFT = 1024    # Soft limit of maximum of connectors to retreive at once
     APP_CACHE_TTL = 300  # How long we consider the app <-> connector mapping accurate enough
     NODATA = "-"         # Output value in the CSV cell if data is not available
-    NODATA_JSON = None   # Output value in the CSV cell if data is not available
+    NODATA_JSON = None   # Output value in the JSON cell if data is not available
+
+    class ConnectorPackage(Enum):
+        VMWare = 1
+        VirtualBox = 2
+        AWS = 3
+        KVM = 4
+        HyperV = 5
+        Docker = 6
+        AWS_Classic = 7
+        Azure = 8
+        Google = 9
+        Softlayer = 10
+        Fujitsu = 11
 
     def __init__(self, config):
         super(ConnectorAPI, self).__init__(config, api=BaseAPI.API_Version.OpenAPI)
 
-    def load(self, con_moniker):
+    def load(self, con_moniker: EAAItem):
         """
         Load a connector config
 
@@ -412,6 +425,45 @@ class ConnectorAPI(BaseAPI):
             cli.footer("Connector swapped in %s application(s)." % app_processed)
             cli.footer("Updated application(s) is/are marked as ready to deploy")
 
+
+    def create(self, config):
+
+        if config.connector_package not in ConnectorAPI.ConnectorPackage._member_names_:
+            cli.print_error(f"Invalid Connector Package {config.connector_package}.")
+            cli.print_error(f"Options are: {", ".join(ConnectorAPI.ConnectorPackage._member_names_)}")
+            cli.exit(2)
+
+        connector_package_lookup = {member.name: member.value for member in ConnectorAPI.ConnectorPackage}
+
+        payload = {
+            "name": config.connector_name,
+            "description": config.connector_description,
+            # "status": 1,
+            "debug_channel_permitted": config.connector_debug,
+            "package": connector_package_lookup.get(config.connector_package)
+        }
+
+        response = self.post('mgmt-pop/agents', json=payload)
+        if response.status_code != 200:
+            cli.print_error(f"Connector was not created due to the following error: {response.text}")
+            cli.exit(2)
+
+        connector_info = response.json()
+        connector_moniker = EAAItem(f"con://{connector_info.get("uuid_url")}")
+        start = time.time()
+        wait_until = start + config.connector_dl_wait
+        wait_interval = 1  # Start interval in seconds
+        bakeoff_factor = 2 # Multiplier of wait time between each poll
+        bakeoff_max = 60 # max interval we wait between each poll
+        while time.time() < wait_until:
+            connector_info = self.load(connector_moniker)
+            if connector_info.get('download_url'):
+                break
+            logging.debug(f"Wait {wait_interval}s...")
+            time.sleep(wait_interval)
+            wait_interval = min(wait_interval * bakeoff_factor, bakeoff_max)
+
+        cli.print(json.dumps(connector_info, indent=2))
 
     def remove(self, connector_moniker: EAAItem):
         "Delete an EAA connector."
