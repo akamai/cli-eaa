@@ -5,7 +5,7 @@
   "commands": [
     {
       "name": "eaa",
-      "version": "0.6.6",
+      "version": "0.6.7",
       "description": "Akamai CLI for Enterprise Application Access (EAA)"
     }
   ]
