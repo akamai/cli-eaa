@@ -430,7 +430,8 @@ class ConnectorAPI(BaseAPI):
 
         if config.connector_package not in ConnectorAPI.ConnectorPackage._member_names_:
             cli.print_error(f"Invalid Connector Package {config.connector_package}.")
-            cli.print_error(f"Options are: {", ".join(ConnectorAPI.ConnectorPackage._member_names_)}")
+            connectors_packages = ", ".join(ConnectorAPI.ConnectorPackage._member_names_)
+            cli.print_error(f"Options are: {connectors_packages}")
             cli.exit(2)
 
         connector_package_lookup = {member.name: member.value for member in ConnectorAPI.ConnectorPackage}
