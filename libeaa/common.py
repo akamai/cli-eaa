@@ -17,7 +17,7 @@ Common class / function for cli-eaa
 """
 
 #: cli-eaa version [PEP 8]
-__version__ = '0.6.6'
+__version__ = '0.6.7'
 
 import sys
 from threading import Event
@@ -314,3 +314,25 @@ def isfloat(value):
         return True
     except ValueError:
         return False
+
+
+def merge_dicts(dict1, dict2):
+    """
+    Recursively merge two dictionaries.
+
+    Args:
+        dict1 (dict): The first dictionary.
+        dict2 (dict): The second dictionary.
+
+    Returns:
+        dict: The merged dictionary.
+    """
+    merged_dict = dict1.copy()
+
+    for key, value in dict2.items():
+        if key in merged_dict and isinstance(merged_dict[key], dict) and isinstance(value, dict):
+            merged_dict[key] = merge_dicts(merged_dict[key], value)
+        else:
+            merged_dict[key] = value
+
+    return merged_dict

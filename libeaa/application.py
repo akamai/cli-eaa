@@ -1,4 +1,4 @@
-# Copyright 2022 Akamai Technologies, Inc. All Rights Reserved
+# Copyright 2024 Akamai Technologies, Inc. All Rights Reserved
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ import json
 import os
 
 # cli-eaa
-from common import cli, BaseAPI, EAAInvalidMoniker, EAAItem, config
+from common import cli, BaseAPI, EAAInvalidMoniker, EAAItem, config, merge_dicts
 
 # 3rd party
 from jinja2 import Environment, FileSystemLoader
@@ -424,21 +424,24 @@ class ApplicationAPI(BaseAPI):
         if len(app_config.get('urllocation', [])) > 0:
             upp_url = 'mgmt-pop/apps/{applicationId}/urllocation'.format(applicationId=app_moniker.uuid)
             for upp_rule in app_config.get('urllocation', []):
+
+                # First we create the URL Policy url skeleton
                 upp_create_payload = {
                     "rule_type": upp_rule.get("rule_type", 1),
                     "name": upp_rule.get("name"),
                     "url": upp_rule.get("url")
                 }
-                if upp_rule.get("settings"):
-                    upp_create_payload["settings"] = upp_rule.get("settings")
                 upp_create = self.post(upp_url, json=upp_create_payload)
                 upp_create_data = upp_create.json()
+
                 if upp_create_data.get('uuid_url'):
                     upp_update_url = 'mgmt-pop/apps/{applicationId}/urllocation/{ruleId}'
+                    # Merge incoming settings with default set by backend provided
+                    put_payload = merge_dicts(upp_create_data, upp_rule)
                     self.put(upp_update_url.format(
                         applicationId=app_moniker.uuid,
                         ruleId=upp_create_data.get('uuid_url')),
-                        json=upp_rule
+                        json=put_payload
                     )
         else:
             logger.debug("No URL path-based policies set")
