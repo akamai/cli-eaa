@@ -450,7 +450,7 @@ class ConnectorAPI(BaseAPI):
             cli.exit(2)
 
         connector_info = response.json()
-        connector_moniker = EAAItem(f"con://{connector_info.get("uuid_url")}")
+        connector_moniker = EAAItem(f'con://{connector_info.get("uuid_url")}')
         start = time.time()
         wait_until = start + config.connector_dl_wait
         wait_interval = 1  # Start interval in seconds
