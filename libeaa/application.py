@@ -17,6 +17,8 @@ import logging
 import sys
 import json
 import os
+import string
+import random
 
 # cli-eaa
 from common import cli, BaseAPI, EAAInvalidMoniker, EAAItem, config, merge_dicts
@@ -262,6 +264,44 @@ class ApplicationAPI(BaseAPI):
                 return cert.get('uuid_url')
         return ""
 
+    def connector_lookup(self, name):
+        agents = self.get('mgmt-pop/agents?limit=100')
+        for agent in agents.json().get('objects'):
+            if agent.get('name') == name:
+                return agent.get('uuid_url')
+        return ""
+    
+    def idp_lookup(self, name):
+        idps = self.get('mgmt-pop/idp?limit=100')
+        for idp in idps.json().get('objects'):
+            if idp.get('name') == name:
+                logger.debug(json.dumps(idp, indent=2))
+                return idp
+        return None
+
+    def directory_lookup(self, name):
+        directories = self.get('mgmt-pop/directories?limit=100')
+        for dir in directories.json().get('objects'):
+            if dir.get('name') == name:
+                logger.debug(json.dumps(dir, indent=2))
+                return dir
+        return None
+    
+    def group_lookup(self, directory_uuid, group_name):
+        logger.debug(f"group_lookup: looking for {group_name} in directory {directory_uuid}...")
+        url = 'mgmt-pop/directories/{directory_uuid}/groups'.format(directory_uuid=directory_uuid)     
+        groups = self.get(url)
+        for g in groups.json().get('objects'):
+            if g.get('name') == group_name:
+                logger.debug("### FOUND GROUP")
+                logger.debug(json.dumps(g, indent=2))
+                return g
+        return None
+    
+    def random_string(self, length):
+        characters = string.ascii_lowercase + string.digits
+        return ''.join(random.choice(characters) for _ in range(length))
+
     def parse_template(self, raw_config):
         """
         Parse the EAA configuration as JINJA2 template
@@ -273,6 +313,11 @@ class ApplicationAPI(BaseAPI):
         t.globals['AppDomainType'] = ApplicationAPI.Domain
         t.globals['cli_cloudzone'] = self.cloudzone_lookup
         t.globals['cli_certificate'] = self.certificate_lookup
+        t.globals['cli_connector'] = self.connector_lookup
+        t.globals['cli_idp'] = self.idp_lookup
+        t.globals['cli_directory'] = self.directory_lookup
+        t.globals['cli_group'] = self.group_lookup
+        t.globals['cli_randomstring'] = self.random_string
         output = t.render(**dict(self._config.variables))
         logger.debug("JSON Post-Template Render:")
         for lineno, line in enumerate(output.splitlines()):
@@ -302,6 +347,12 @@ class ApplicationAPI(BaseAPI):
             app_config_create["client_app_mode"] = \
                 app_config.get('client_app_mode', ApplicationAPI.ClientMode.TCP.value)
         newapp = self.post('mgmt-pop/apps', json=app_config_create)
+
+        if config.debug:
+            json_object = json.dumps(app_config_create, indent=4)        
+            with open(f"1_POST_{app_config.get("name")}.json", "w") as outfile:
+                outfile.write(json_object)
+
         logger.info("Create app core: %s %s" % (newapp.status_code, newapp.text))
         if newapp.status_code != 200:
             cli.exit(2)
@@ -312,6 +363,11 @@ class ApplicationAPI(BaseAPI):
 
         # Now we push everything else as a PUT (update)
         self.put('mgmt-pop/apps/{applicationId}'.format(applicationId=app_moniker.uuid), json=app_config)
+
+        if config.debug:
+            json_object = json.dumps(app_config, indent=4)        
+            with open(f"2_PUT_{app_config.get("name")}.json", "w") as outfile:
+                outfile.write(json_object)
 
         # Sub-components of the application configuration definition
 
@@ -596,7 +652,7 @@ class ApplicationAPI(BaseAPI):
         if deploy.status_code != 200:
             logger.error(deploy.text)
 
-    def list(self, details=False):
+    def list(self, fields: list=[], details: bool=False):
         """
         List all applications (experimental)
         :param details (bool): load the app details (SUPER SLOW)
@@ -604,16 +660,18 @@ class ApplicationAPI(BaseAPI):
 
         if self.api_ver != BaseAPI.API_Version.OpenAPIv3:
             raise Exception("Unsupported API version")
+        
+        app_fields = set(["uuid_url"] + fields)
 
         total_count = None
         page = 1
-        page_size = 25
+        page_size = 100
         offset = 0
         l = []
 
         app_config_loader = ApplicationAPI(self._config, BaseAPI.API_Version.OpenAPI)
         while total_count == None or len(l) < total_count:
-            r = self.get('mgmt-pop/apps', params={"offset": offset, "fields": "uuid_url", 
+            r = self.get('mgmt-pop/apps', params={"offset": offset, "fields": ",".join(app_fields), 
                                                   "limit": page_size, "offset": (page-1)*page_size})
             j = r.json()
             total_count = j.get('meta').get('total_count')
@@ -630,7 +688,7 @@ class ApplicationAPI(BaseAPI):
             raise Exception("Unsupported API version")
 
         appcount_by_cloudzone = {}
-        for a in self.list(True):
+        for a in self.list(details=True):
             scanned_cloudzone = a.get('popRegion')
             if scanned_cloudzone not in appcount_by_cloudzone.keys():
                 appcount_by_cloudzone[scanned_cloudzone] = 0
