@@ -25,6 +25,24 @@ import _paths
 from error import rc_error, cli_exit_with_error
 
 
+def strtobool(value):
+    """
+    We could do
+    from distutils.util import strtobool
+    Yet, it won't be a good long term solution:
+    https://docs.python.org/3.10/library/distutils.html
+    """
+    if isinstance(value, bool):
+        return value
+    value = value.lower()
+    if value in ('y', 'yes', 't', 'true', 'on', '1'):
+        return True
+    elif value in ('n', 'no', 'f', 'false', 'off', '0'):
+        return False
+    else:
+        raise ValueError("invalid input value %r" % (value,))
+
+
 class EdgeGridConfig():
 
     parser = argparse.ArgumentParser(prog="akamai eaa",
@@ -209,7 +227,8 @@ class EdgeGridConfig():
 
         parser.add_argument('--batch', '-b', default=False, action='store_true',
                             help='Batch mode, remove the extra header/footer in lists.')
-        parser.add_argument('--debug', '-d', default=False, action='count', help=' Debug mode (log HTTP headers)')
+        parser.add_argument('--debug', '-d', action="store_true", default=strtobool(os.environ.get("CLIEAA_DEBUG", False)),
+                            help=' Debug mode (log HTTP headers)')
         parser.add_argument('--edgerc', '-e',
                             default=os.environ.get('AKAMAI_EDGERC', '~/.edgerc'),
                             metavar='credentials_file',

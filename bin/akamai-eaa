@@ -60,78 +60,42 @@ class SearchAPI(BaseAPI):
     def __init__(self, config):
         super(SearchAPI, self).__init__(config, api=BaseAPI.API_Version.OpenAPI)
 
-    def search_app(self, search_pattern):
-        """
-        Search for a particular application pattern, or all if no pattern is provided.
-        Corresponding API documentation: https://techdocs.akamai.com/eaa-api/reference/get-apps
-        """
-
-        url_params = {'limit': SearchAPI.SCAN_LIMIT, 'expand': 'true'}
-        first_search = self.get('mgmt-pop/apps', params=url_params)
-        data = first_search.json()
+    def search_app(self, search_pattern: str=None):
+        app_api = ApplicationAPI(config, BaseAPI.API_Version.OpenAPIv3)
+        all_apps = app_api.list(fields=['app_type', 'name', 'host', 'cname', 'cert', 'resource_status'])
+        app_count = len(all_apps)
         app_found = 0
-        app_scanned = 0
-
-        # CLI ouput header
         cli.header('#app_id,type,name,host,cname,cert_id,status,reachable')
-        stats = self.process_page(data, search_pattern)
-        app_scanned += stats[0]
-        app_found += stats[1]
 
-        if data.get("meta"):
+        for a in all_apps:
+            if not search_pattern or (
+                search_pattern and (
+                    fnmatch.fnmatch(a.get('name') or "", "*%s*" % search_pattern) or
+                    fnmatch.fnmatch(a.get('host') or "", "*%s*" % search_pattern) or
+                    fnmatch.fnmatch(a.get('cname') or "", "*%s*" % search_pattern)
+                )
+            ):
+                app_found += 1
+                cli.print(('{scheme}{app_id},{app_type},{name},{host},{cname},'
+                            '{cert_scheme}{cert_id},{status},{reach}').format(
+                    scheme=EAAItem.Type.Application.scheme,
+                    app_id=a.get('uuid_url'),
+                    app_type=ApplicationAPI.Type(a.get('app_type')).name,
+                    name=a.get('name'),
+                    host=a.get('host'),
+                    cname=a.get('cname'),
+                    cert_scheme=EAAItem.Type.Certificate.scheme if a.get('cert') else '',
+                    cert_id=a.get('cert') or '-',
+                    status=ApplicationAPI.Status(a.get('resource_status', {}).get('app_status')).name or "-",
+                    reach=('Y' if a.get('resource_status', {}).get('host_reachable') else 'F'))
+                )
 
-            app_count = data.get("meta").get("total_count")
-            page_offset = data.get("meta").get("offset")
-            page_limit = data.get("meta").get("limit")
-            page_total = ceil(app_count / page_limit)
-
-            logging.debug("app_count: {}, scanned: {}, offset: {}, limit: {}, pages: {}".format(
-                app_count, app_scanned, page_offset, page_limit, page_total))
-
-            for page in range(1, page_total):
-                logging.debug("Loading application page {} of {}".format(page, page_total))
-                url_params['offset'] = page * page_limit
-                search = self.get('mgmt-pop/apps', params=url_params)
-                stats = self.process_page(search.json(), search_pattern)
-                app_scanned += stats[0]
-                app_found += stats[1]
-
-            # CLI ouput footer
-            if not config.batch:
-                if app_found != app_count:
-                    cli.footer("Found %s app(s), total %s app(s)" % (app_found, app_count))
-                else:
-                    cli.footer("%s app(s)" % app_count)
-
-    def process_page(self, data, search_pattern):
-        app_found = 0
-        app_scanned = 0
-
-        if data.get("meta"):
-            for a in data.get('objects', []):
-                app_scanned += 1
-                if not search_pattern or (
-                    search_pattern and (
-                        fnmatch.fnmatch(a.get('name') or "", "*%s*" % search_pattern) or
-                        fnmatch.fnmatch(a.get('host') or "", "*%s*" % search_pattern) or
-                        fnmatch.fnmatch(a.get('cname') or "", "*%s*" % search_pattern)
-                    )
-                ):
-                    cli.print(('{scheme}{app_id},{app_type},{name},{host},{cname},'
-                               '{cert_scheme}{cert_id},{status},{reach}').format(
-                        scheme=EAAItem.Type.Application.scheme,
-                        app_id=a.get('uuid_url'),
-                        app_type=ApplicationAPI.Type(a.get('app_type')).name,
-                        name=a.get('name'),
-                        host=a.get('host'),
-                        cname=a.get('cname'),
-                        cert_scheme=EAAItem.Type.Certificate.scheme,
-                        cert_id=a.get('cert'),
-                        status=ApplicationAPI.Status(a.get('app_status')).name,
-                        reach=('Y' if a.get('resource_status', {}).get('host_reachable') else 'F'))
-                    )
-                    app_found += 1
-        return app_scanned, app_found
+        # CLI ouput footer
+        if not config.batch:
+            if app_found != app_count:
+                cli.footer("Found %s app(s), total %s app(s)" % (app_found, app_count))
+            else:
+                cli.footer("%s app(s)" % app_count)
 
 
 class ReportingAPI(BaseAPI):
