@@ -688,7 +688,7 @@ class ApplicationAPI(BaseAPI):
             raise Exception("Unsupported API version")
 
         appcount_by_cloudzone = {}
-        for a in self.list(True):
+        for a in self.list(details=True):
             scanned_cloudzone = a.get('popRegion')
             if scanned_cloudzone not in appcount_by_cloudzone.keys():
                 appcount_by_cloudzone[scanned_cloudzone] = 0
