@@ -18,6 +18,7 @@
 
 import os
 import argparse
+import time
 
 from configparser import ConfigParser
 
@@ -159,7 +160,16 @@ class EdgeGridConfig():
                                     help="Deploy impacted apps/idp after the rotation")
 
         report_parser = subparsers.add_parser('report', aliases=["r"], help='EAA reports')
-        report_parser.add_argument(dest='report_name', choices=['clients'], help="Report name")
+        # Pre 0.6.9
+        # report_parser.add_argument(dest='report_name', choices=['clients', 'last_access'], help="Report name")
+        subsub = report_parser.add_subparsers(dest="report_name", help='Report name')
+        subsub.add_parser("clients")
+        access_parser = subsub.add_parser("last_access")
+        access_parser.add_argument('--app', '-a', type=str, help="Application/IdP UUID")
+        access_parser.add_argument('--start', '-s', type=int, default=int(time.time() - 7 * 24 * 60 * 60),
+                                   help="Start datetime (EPOCH), default is 1 week ago")
+        access_parser.add_argument('--end', '-e', type=int, default=int(time.time()), 
+                                   help="End datetime (EPOCH), default is now")
 
         con_parser = subparsers.add_parser('connector', aliases=["c", "con"], help='Manage EAA connectors')
         con_parser.add_argument(dest='connector_id', nargs="?", default=None,

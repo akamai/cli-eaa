@@ -17,7 +17,7 @@ Common class / function for cli-eaa
 """
 
 #: cli-eaa version [PEP 8]
-__version__ = '0.6.8'
+__version__ = '0.6.9'
 
 import sys
 from threading import Event
@@ -38,6 +38,7 @@ from akamai.edgegrid import EdgeGridAuth, EdgeRc
 # If all parameters are set already, use them.  Otherwise
 # use the config
 config = EdgeGridConfig({'verbose': False}, 'default')
+logger = logging.getLogger(__name__)
 
 #: HTTP Request Timeout in seconds
 HTTP_REQ_TIMEOUT = 300
@@ -83,12 +84,12 @@ class cli:
 
     @staticmethod
     def exit(code):
-        logging.info("Exit cli-eaa with code %s" % code)
+        logger.info("Exit cli-eaa with code %s" % code)
         exit(code)
 
     @staticmethod
     def exit_gracefully(signum, frame):
-        logging.info(f"Stop due to SIGTERM(15) or SIGINT(2) signal received: {signum} ")
+        logger.info(f"Stop due to SIGTERM(15) or SIGINT(2) signal received: {signum} ")
         cli.stop_event.set()
 
 
@@ -231,10 +232,10 @@ class BaseAPI(object):
         if self._session:
             self._session.headers.update({'User-Agent': self.user_agent()})
             if config.proxy:
-                logging.info("Set proxy to %s" % config.proxy)
+                logger.info("Set proxy to %s" % config.proxy)
                 self._session.proxies['https'] = 'http://%s' % config.proxy
 
-        logging.info("Initialized with base_url %s" % self._baseurl)
+        logger.info("Initialized with base_url %s" % self._baseurl)
 
     def user_agent(self):
         return f"{self._config.ua_prefix} cli-eaa/{__version__}"
@@ -253,6 +254,9 @@ class BaseAPI(object):
             final_params.update({'accountSwitchKey': self._config.accountkey})
         if isinstance(params, dict):
             final_params.update(params)
+        if params.get('_remove-extras_'):
+            for p in ('_remove-extras_', 'contract_id', 'accountkey', 'accountSwitchKey', 'ua'):
+                if final_params.get(p): del(final_params[p])
         return final_params
 
     @staticmethod
@@ -260,7 +264,7 @@ class BaseAPI(object):
         """
         Log information about the API request/response to help with troubleshooting.
         """
-        logging.info(f"BaseAPI: {response.url} {response.request.method} response is HTTP/{response.status_code}, "
+        logger.info(f"BaseAPI: {response.url} {response.request.method} response is HTTP/{response.status_code}, "
                      f"x-trace-id: {response.headers.get('x-trace-id')}, "
                      f"x-ids-session-id: {response.headers.get('x-ids-session-id')}")
 
@@ -272,39 +276,39 @@ class BaseAPI(object):
         response = self._session.get(url, params=self.build_params(params), timeout=HTTP_REQ_TIMEOUT)
         BaseAPI.log_response_summary(response)
         if response.status_code == 401:
-            logging.fatal(f"API returned HTTP/401, check your API credentials\n{response.text}")
-            logging.fatal(f"EdgeRC Section: {config.section}")
+            logger.fatal(f"API returned HTTP/401, check your API credentials\n{response.text}")
+            logger.fatal(f"EdgeRC Section: {config.section}")
             cli.exit(401)
         if response.status_code != requests.status_codes.codes.ok:
-            logging.info("BaseAPI: GET response body: %s" % response.text)
+            logger.info("BaseAPI: GET response body: %s" % response.text)
         return response
 
     def post(self, url_path, json=None, params=None, allow_redirects=True):
         url = urljoin(self._baseurl, url_path)
-        logging.info("API URL: %s" % url)
+        logger.info("API URL: %s" % url)
         response = self._session.post(url, json=json, params=self.build_params(params),
                                       timeout=HTTP_REQ_TIMEOUT, allow_redirects=allow_redirects)
         BaseAPI.log_response_summary(response)
         if response.status_code != 200:
-            logging.info("BaseAPI: POST response body: %s" % response.text)
+            logger.info("BaseAPI: POST response body: %s" % response.text)
         return response
 
     def put(self, url_path, json=None, params=None):
         url = urljoin(self._baseurl, url_path)
-        logging.info("[PUT] API URL: %s" % url)
+        logger.info("[PUT] API URL: %s" % url)
         response = self._session.put(url, json=json, params=self.build_params(params), timeout=HTTP_REQ_TIMEOUT)
         BaseAPI.log_response_summary(response)
         if response.status_code != 200:
-            logging.info("BaseAPI: PUT response body: %s" % response.text)
+            logger.info("BaseAPI: PUT response body: %s" % response.text)
         return response
 
     def delete(self, url_path, json=None, params=None):
         url = urljoin(self._baseurl, url_path)
-        logging.info("API URL: %s" % url)
+        logger.info("API URL: %s" % url)
         response = self._session.delete(url, json=json, params=self.build_params(params), timeout=HTTP_REQ_TIMEOUT)
         BaseAPI.log_response_summary(response)
         if response.status_code != 200:
-            logging.info("BaseAPI: DELETE response body: %s" % response.text)
+            logger.info("BaseAPI: DELETE response body: %s" % response.text)
         return response
 
 
