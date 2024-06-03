@@ -43,6 +43,7 @@ from application import ApplicationAPI
 from idp import IdentityProviderAPI
 from connector import ConnectorAPI
 from directory import DirectoryAPI
+from reporting import ReportingAPI
 
 verbose = getattr(config, 'verbose', False)
 
@@ -96,129 +97,6 @@ class SearchAPI(BaseAPI):
                 cli.footer("Found %s app(s), total %s app(s)" % (app_found, app_count))
             else:
                 cli.footer("%s app(s)" % app_count)
-
-
-class ReportingAPI(BaseAPI):
-    def __init__(self, config):
-        super(ReportingAPI, self).__init__(config, api=BaseAPI.API_Version.OpenAPI)
-
-    def clients(self):
-        now = time.time()
-        params = {
-            'limit': 0,
-            'start': int((now - 30 * 24 * 60 * 60) * 1000),
-            'end': int(now * 1000)
-        }
-        resp = self.get('mgmt-pop/clients', params=params)
-        if resp.status_code != 200:
-            logging.error(resp.text)
-        data = resp.json()
-        cli.header("#device_id,version,idp_user,idp_host,lastseen")
-        for count, c in enumerate(data.get('objects', {})):
-            cli.print("{device_id},{version},{idp_user},{idp_host},{lastseen}".format(
-                device_id=c.get("device_id"),
-                version=c.get("device_info", {}).get("version"),
-                idp_user=c.get("idp_user"),
-                idp_host=c.get("idp_host"),
-                lastseen=c.get("timestamp")
-            ))
-        cli.footer("%s unique EAA Clients checked-in in the last 30 days" % count)
-
-
-    @staticmethod
-    def facility_from_popname(pop_name):
-        """
-        Crudly derive the facility based on the POP name.
-        """
-        facility = "AWS"
-        if "-LIN-" in pop_name:
-            facility = "Akamai Cloud Compute (formerly Linode)"
-        return facility
-
-    def tenant_info(self):
-        """
-        Display tenant info/stats.
-        """
-        info = {"cloudzones": []}
-        resp = self.get('mgmt-pop/pops?shared=true')
-
-        if self._config.show_usage:
-            app_apiv3 = ApplicationAPI(self._config, BaseAPI.API_Version.OpenAPIv3)
-            app_api = ApplicationAPI(self._config, BaseAPI.API_Version.OpenAPI)
-            idp_api = IdentityProviderAPI(self._config)
-            app_by_cz = app_apiv3.stats_by_cloudzone()
-            entdns_by_cz = app_api.entdns_stats_by_cloudzone()
-            idp_by_pop = idp_api.stats_by_pop()
-
-        scanned_cz = []
-        for eaa_cloudzone in resp.json().get('objects'):
-            cz_info = {
-                "name": eaa_cloudzone.get('region'),
-                "facility": ReportingAPI.facility_from_popname(eaa_cloudzone.get('name')),
-            }
-            if self._config.show_usage:
-                cz_info["count_idp"] = idp_by_pop.get(eaa_cloudzone.get('uuid_url'), 0)
-                cz_info["count_app"] = app_by_cz.get(eaa_cloudzone.get('region'), 0)
-                cz_info["count_entdns"] = entdns_by_cz.get(eaa_cloudzone.get('region'), 0)
-
-            scanned_cz.append(cz_info)
-
-        # sort by Cloud Zone name
-        info['cloudzones'] = sorted(scanned_cz, key=lambda x: x['name'])
-
-        print(dumps(info, indent=4))
-
-    def deviceposture_inventory(self, follow=False, interval=300):
-        """
-        Fetch Device Posture inventory once or until a SIG_TERM is received or Control-C is pressed
-
-        Args:
-            follow (bool, optional): Will not terminate and keep pulling every `interval` sec. Defaults to False.
-            interval (int, optional): Interval in seconds to pull the inventory. Defaults to 300.
-        """
-        while not cli.stop_event.is_set():
-            start = time.time()
-            offset = 0
-            limit = 3000
-            devices = []
-
-            while not cli.stop_event.is_set():
-                page_start = time.time()
-                resp = self.get('device-posture/inventory/list', params={'offset': offset, 'limit': limit})
-                if resp.status_code != 200:
-                    cli.print_error("Non HTTP 200 response fromt the API")
-                    cli.exit(2)
-                doc = resp.json()
-                meta = doc.get('meta', {})
-                next_page = meta.get('next')
-                limit = meta.get('limit')
-                objects_in_page = doc.get('objects', [])
-                offset = dict(parse_qsl(next_page)).get('offset')
-                logging.debug("--- DP Inventory page with {c} devices fetched in {elapsed:.2f} seconds".format(
-                              c=len(objects_in_page), elapsed=time.time()-page_start))
-                devices += objects_in_page
-                if not next_page:
-                    break
-
-            for d in devices:
-                cli.print(dumps(d))
-
-            logging.debug("DP Inventory Total {device_count} devices fetched in {elapsed:.2f} seconds".format(
-                          device_count=len(devices), elapsed=time.time()-start))
-            if follow is False:
-                break
-            else:
-                wait_time = interval - (time.time() - start)  # interval - time elapsed
-                if wait_time > 0:
-                    logging.debug("Sleeping for {:.2f} seconds".format(wait_time))
-                    time.sleep(wait_time)
-                else:
-                    logging.warn("Fetching data takes more time than the interval, "
-                                 "consider increase the --interval parameter")
-
-    def deviceposture_devicehistory(self, device_id):
-        resp = self.get('device-posture/inventory/device-history/{deviceId}'.format(deviceId=device_id))
-        print(dumps(resp.json(), indent=4))
 
 
 def setup_logging():
@@ -310,10 +188,12 @@ if __name__ == "__main__":
         elif config.command in ("idp", "i"):
             i = IdentityProviderAPI(config)
             i.list()
-        elif config.command in ("report", "r"):
+        elif config.command in ("report", "reports", "r"):
             r = ReportingAPI(config)
             if config.report_name == "clients":
                 r.clients()
+            elif config.report_name == "last_access":
+                r.last_access(config.start, config.end, config.app)
         elif config.command in ("info", ):
             r = ReportingAPI(config)
             r.tenant_info()

@@ -1,4 +1,4 @@
-# Copyright 2022 Akamai Technologies, Inc. All Rights Reserved
+# Copyright 2024 Akamai Technologies, Inc. All Rights Reserved
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,12 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+
 # cli-eaa
 from common import cli, BaseAPI
 from application import ApplicationAPI
 
 MAX_RESULT = 1000
-
+logger = logging.getLogger(__name__)
 
 class IdentityProviderAPI(BaseAPI):
     """
@@ -35,12 +37,14 @@ class IdentityProviderAPI(BaseAPI):
     def list(self):
         url_params = {'limit': MAX_RESULT}
         search_idp = self.get('mgmt-pop/idp', params=url_params)
-        cli.header("#IdP-id,name,status,certificate,client,dp")
+        cli.header("#IdP-id,name,idp_hostname,status,certificate,client,dp")
         idps = search_idp.json()
+        logger.debug(idps)
         for i in idps.get('objects', []):
-            cli.print("idp://{idp_id},{name},{status},{cert},{client},{dp}".format(
+            cli.print("idp://{idp_id},{name},{host},{status},{cert},{client},{dp}".format(
                 idp_id=i.get('uuid_url'),
                 name=i.get('name'),
+                host=i.get('login_host'),
                 status=ApplicationAPI.Status(i.get('idp_status')).name,
                 cert=(("crt://%s" % i.get('cert')) if i.get('cert') else '-'),
                 client=('Y' if i.get('enable_access_client') else 'N'),

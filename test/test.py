@@ -382,6 +382,18 @@ class TestDirectory(CliEAATest):
         self.assertGreater(len(stdout), 0, "No directory health output")
 
 
+class TestReport(CliEAATest):
+
+    def test_report_last_access(self):
+        # by default the command extract a week of data
+        cmd = self.cli_run('report', 'last_access')
+        stdout, stderr = cmd.communicate()
+        output = stdout.decode(encoding)
+        line_count = len(output.splitlines())
+        self.assertGreater(line_count, 2, "We expect at least one line")
+        self.assertEqual(cmd.returncode, 0, 'return code must be 0')
+
+
 class TestCliEAA(CliEAATest):
     """
     General commands of the CLI like version or help
