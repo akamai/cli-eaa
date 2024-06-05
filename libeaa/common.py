@@ -254,9 +254,6 @@ class BaseAPI(object):
             final_params.update({'accountSwitchKey': self._config.accountkey})
         if isinstance(params, dict):
             final_params.update(params)
-        if params.get('_remove-extras_'):
-            for p in ('_remove-extras_', 'contract_id', 'accountkey', 'accountSwitchKey', 'ua'):
-                if final_params.get(p): del(final_params[p])
         return final_params
 
     @staticmethod
