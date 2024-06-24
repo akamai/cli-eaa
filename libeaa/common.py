@@ -17,7 +17,7 @@ Common class / function for cli-eaa
 """
 
 #: cli-eaa version [PEP 8]
-__version__ = '0.6.9'
+__version__ = '0.6.10'
 
 import sys
 from threading import Event
@@ -224,10 +224,6 @@ class BaseAPI(object):
                 self._baseurl = f'https://%s/crux/v3/' % edgerc.get(section, 'host')
             self._session = requests.Session()
             self._session.auth = EdgeGridAuth.from_edgerc(edgerc, section)
-            # Handle extra querystring to send to all REST requests
-            scanned_extra_qs = edgerc.get(section, 'extra_qs', fallback=None)
-            if scanned_extra_qs:
-                self.extra_qs.update(parse_qs(scanned_extra_qs))
 
         if self._session:
             self._session.headers.update({'User-Agent': self.user_agent()})
