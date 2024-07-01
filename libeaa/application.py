@@ -350,7 +350,7 @@ class ApplicationAPI(BaseAPI):
 
         if config.debug:
             json_object = json.dumps(app_config_create, indent=4)        
-            with open(f"1_POST_{app_config.get("name")}.json", "w") as outfile:
+            with open(f"1_POST_{app_config.get('name')}.json", "w") as outfile:
                 outfile.write(json_object)
 
         logger.info("Create app core: %s %s" % (newapp.status_code, newapp.text))
@@ -366,7 +366,7 @@ class ApplicationAPI(BaseAPI):
 
         if config.debug:
             json_object = json.dumps(app_config, indent=4)        
-            with open(f"2_PUT_{app_config.get("name")}.json", "w") as outfile:
+            with open(f"2_PUT_{app_config.get('name')}.json", "w") as outfile:
                 outfile.write(json_object)
 
         # Sub-components of the application configuration definition
