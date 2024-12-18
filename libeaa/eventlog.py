@@ -397,6 +397,11 @@ class EventLogAPI(common.BaseAPI):
                     logger.debug("Now waiting %s seconds..." % (EventLogAPI.PULL_INTERVAL_SEC - elapsed))
                     stop_event.wait(EventLogAPI.PULL_INTERVAL_SEC - elapsed)
                     fetch_log_count = 0
+                    # TMESUP-147 when tail and start are set, we need to unset start
+                    #            to kick in the normal tail
+                    if config.tail and config.start:
+                        logger.info("✴️✴️✴️ Engaging tail mode")
+                        config.start = None
                     if stop_event.is_set():
                         break
         except Exception:
