@@ -330,7 +330,7 @@ class ApplicationAPI(BaseAPI):
         :param app_config: configuration as JSON string
 
         Note: the portal use the POST to create a new app with a minimal payload:
-              {"app_profile":1,"app_type":1,"client_app_mode":1,"app_profile_id":"Fp3RYok1EeSE6AIy9YR0Dw",
+              {"app_profile":1,"app_type":1,"client_app_mode":1,"app_profile_id":"●●●●●●●●●●●●●●●●●●●●●●",
               "name":"test app","description":"This is my test app"}
               We should do the same here
         """
@@ -425,7 +425,7 @@ class ApplicationAPI(BaseAPI):
                 return
 
             # Enable the ACL service
-            # payload = {"uuid_url":"fJZ7A0emQWijZ40mxB3dWw","description":null,"name":"Access Control",
+            # payload = {"uuid_url":"●●●●●●●●●●●●●●●●●●●●●●","description":null,"name":"Access Control",
             # service_type":6,"settings":{},"status":"on"}
             payload = service_acl.get('service')
             payload['uuid_url'] = service_uuid
@@ -538,13 +538,13 @@ class ApplicationAPI(BaseAPI):
         # new groups added to mgmt-pop/appgroups?
         # payload: {'data': [{'apps': [app_moniker.uuid], 'groups': app_config.get('groups', [])}]}
         # remove groups that are not in the incoming payload to mgmt-pop/appgroups?method=DELETE
-        # {"deleted_objects":["ShTjwZjeRg2XjXvv--tHxQ"]}
+        # {"deleted_objects":["●●●●●●●●●●●●●●●●●●●●●●"]}
         # where the UUID in the list is the app group UUID
         # Example
         # Add "support"
-        # {"data":[{"apps":["PT0JVO4qS-m1g2-ja7-h_Q"],"groups":[{"uuid_url":"9hDCxROqTYmhokljs6uAsA","enable_mfa":"inherit"}]}]}
+        # {"data":[{"apps":["PT0JVO4qS-m1g2-ja7-h_Q"],"groups":[{"uuid_url":"●●●●●●●●●●●●●●●●●●●●●●","enable_mfa":"inherit"}]}]}
         # Remove "support"
-        # {"deleted_objects":["S22ijoezTcmJ70l85O423A"]}
+        # {"deleted_objects":["●●●●●●●●●●●●●●●●●●●●●●"]}
 
         if app_config.get('groups'):  # if the group key is not in the json, we don't touch anything
             existing_groups_resp = self.get(f'mgmt-pop/apps/{app_moniker.uuid}/groups/', params={'limit': 0})

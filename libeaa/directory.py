@@ -262,7 +262,7 @@ class DirectoryAPI(BaseAPI):
         """
         API call
 
-        POST https://control.akamai.com/crux/v1/mgmt-pop/groups/16nUm7dCSyiihfCvMiHrMg/sync
+        POST https://control.akamai.com/crux/v1/mgmt-pop/groups/●●●●●●●●●●●●●●●●●●●●●●/sync
         Payload: {}
         Response: {"response": "Syncing Group Sales Department"}
         """

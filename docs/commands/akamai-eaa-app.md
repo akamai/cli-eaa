@@ -30,19 +30,19 @@ Alias: `a`
 
 ```
 $ akamai eaa search datascience
-app://mD_Pw1XASpyVJc2JwgICTg,Data Science,akdemo-datascience,akdemo-datascience.go.akamai-access.com,4
+app://●●●●●●●●●●●●●●●●●●●●●●,Data Science,akdemo-datascience,akdemo-datascience.go.akamai-access.com,4
 Found 1 app(s), total 124 app(s)
 ```
 Save an application:
 You can save the application locally:
 ```
-$ akamai eaa app app://mD_Pw1XASpyVJc2JwgICTg > ~/eaa_app_datascience_v3.json
+$ akamai eaa app app://●●●●●●●●●●●●●●●●●●●●●● > ~/eaa_app_datascience_v3.json
 ```
 
 Quickly walk through the JSON tree using `jq`.
 
 ```bash
-$ akamai eaa -b app app://mD_Pw1XASpyVJc2JwgICTg | jq .advanced_settings.websocket_enabled
+$ akamai eaa -b app app://●●●●●●●●●●●●●●●●●●●●●● | jq .advanced_settings.websocket_enabled
 "true"
 ```
 
@@ -58,12 +58,12 @@ $ cat ~/eaa_app_datascience_v3.json | akamai eaa app app://mD_Pw1XASpyVJc2JwgICT
 ## Delete an application
 
 ```
-$ akamai eaa app app://mD_Pw1XASpyVJc2JwgICTg delete
+$ akamai eaa app app://●●●●●●●●●●●●●●●●●●●●●● delete
 ```
 
 Deploy an application, you can optionally add a comment to keep track of the change:
 ```
-$ akamai eaa app app://mD_Pw1XASpyVJc2JwgICTg deploy --comment "[TICKET1234] Update service account credentials"
+$ akamai eaa app app://●●●●●●●●●●●●●●●●●●●●●● deploy --comment "[TICKET1234] Update service account credentials"
 ```
 
 Finding an application using a specific connector name: 
@@ -77,7 +77,7 @@ $ akamai eaa -b search | akamai eaa app - | jq -j '.name, ": ", (.agents[]|.name
 
 View groups associated with a particular application:
 ```
-$ akamai eaa app app://FWbUCfpvRKaSOX1rl0u55Q viewgroups
+$ akamai eaa app app://●●●●●●●●●●●●●●●●●●●●●● viewgroups
 ```
 
 You can pipe the command as well, for example to deploy all the application matching your search (eg. "bastion")
@@ -164,12 +164,12 @@ Example `cat webapp.json.j2 | akamai eaa app create --var MYVARIABLE VALUE` will
         {
           "name": "Administrators",
           "enable_mfa": "inherit",
-          "uuid_url": "196YoFHhQa-XXXXXXX"
+          "uuid_url": "●●●●●●●●●●●●●●●●●●●●●●"
         },
         {
           "name": "Support",
           "enable_mfa": "inherit",
-          "uuid_url": "9hDCxROqTYmhXXXXXXX"
+          "uuid_url": "●●●●●●●●●●●●●●●●●●●●●●"
         }
     ]
 }
