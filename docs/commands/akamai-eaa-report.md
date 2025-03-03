@@ -21,10 +21,10 @@ It is a good idea to grab the *idp hostname* with the command:
 ```
 $ akamai eaa idp  | column -s, -t          
 #IdP-id                       name        idp_hostname               status    certificate                   client  dp
-idp://yb_XndD-RjmCFTrTx1QGhw  AMEAADEMO   welcome.akamaidemo.net     Deployed  crt://XtH1dUwqS0qAztk0Zl_M6w  N       N
-idp://_unBFxtJRbS4gZ8pz2ZLDA  OKTA        login-okta.akamaidemo.net  Deployed  crt://XtH1dUwqS0qAztk0Zl_M6w  Y       N
-idp://NMmW2cwqQJanYn3VTXoS9Q  Global IdP  login.akamaidemo.net       Deployed  crt://XtH1dUwqS0qAztk0Zl_M6w  Y       N
-idp://TRmwtYFHRqi9BDXlkvzceg  ADFS        login-adfs.akamaidemo.net  Deployed  crt://XtH1dUwqS0qAztk0Zl_M6w  N       N
+idp://●●●●●●●●●●●●●●●●●●●●●●  AMEAADEMO   welcome.akamaidemo.net     Deployed  crt://●●●●●●●●●●●●●●●●●●●●●●  N       N
+idp://●●●●●●●●●●●●●●●●●●●●●●  OKTA        login-okta.akamaidemo.net  Deployed  crt://●●●●●●●●●●●●●●●●●●●●●●  Y       N
+idp://●●●●●●●●●●●●●●●●●●●●●●  Global IdP  login.akamaidemo.net       Deployed  crt://●●●●●●●●●●●●●●●●●●●●●●  Y       N
+idp://●●●●●●●●●●●●●●●●●●●●●●  ADFS        login-adfs.akamaidemo.net  Deployed  crt://●●●●●●●●●●●●●●●●●●●●●●  N       N
 ```
 
 From there, generate the report with the `-a` parameter:

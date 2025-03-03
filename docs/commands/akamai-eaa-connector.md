@@ -47,15 +47,15 @@ This example shows a short command `akamai eaa c`, replacing `akamai eaa connect
 $ akamai eaa c | column -t -s,
 Total 9 connector(s)
 #Connector-id                 name                reachable  status  version     privateip      publicip        debug
-con://cht3_GEjQWyMW9LEk7KQfg  demo-v2-con-1-amer  1          1       4.4.0-2765  10.1.4.206     12.123.123.123  Y
-con://Wy0Y6FrwQ66yQzLBAInC4w  demo-v2-con-2-amer  1          1       4.4.0-2765  10.1.4.172     12.123.123.123  Y
-con://dK0f1UvhR7i8-RByABDXaQ  demo-v2-con-4-emea  1          1       4.4.0-2765  192.168.1.90   12.123.12.12    N
-con://Ihmf51dASo-R1P37hzaP3Q  demo-v2-con-3-emea  1          1       4.4.0-2765  192.168.1.235  12.123.12.12    N
-con://XiCmu80xQcSWnaeQcvH8Vg  demo-v2-con-5-apj   1          1       4.4.0-2765  192.168.1.228  12.123.123.12   Y
-con://pkGjL5OgSjyHoymMguvp9Q  demo-v2-con-6-apj   1          1       4.4.0-2765  192.168.1.144  12.123.123.12   Y
-con://NAWSlptPSXOjq-bk2-EQPw  demo-v2-con-10-rus  1          1       4.4.0-2765  10.3.0.101     12.123.123.12   Y
-con://e_0nShZBQ7esNAC3ZEkhSQ  demo-v2-con-3-amer  1          1       4.4.0-2765  10.1.4.83      12.123.123.123  Y
-con://OEe9o-n2S_aMeZpLxgwG0A  tmelab-sfo          1          1       4.4.0-2765  192.168.2.101  12.123.123.12   Y
+con://●●●●●●●●●●●●●●●●●●●●●●  demo-v2-con-1-amer  1          1       4.4.0-2765  10.1.4.206     12.123.123.123  Y
+con://●●●●●●●●●●●●●●●●●●●●●●  demo-v2-con-2-amer  1          1       4.4.0-2765  10.1.4.172     12.123.123.123  Y
+con://●●●●●●●●●●●●●●●●●●●●●●  demo-v2-con-4-emea  1          1       4.4.0-2765  192.168.1.90   12.123.12.12    N
+con://●●●●●●●●●●●●●●●●●●●●●●  demo-v2-con-3-emea  1          1       4.4.0-2765  192.168.1.235  12.123.12.12    N
+con://●●●●●●●●●●●●●●●●●●●●●●  demo-v2-con-5-apj   1          1       4.4.0-2765  192.168.1.228  12.123.123.12   Y
+con://●●●●●●●●●●●●●●●●●●●●●●  demo-v2-con-6-apj   1          1       4.4.0-2765  192.168.1.144  12.123.123.12   Y
+con://●●●●●●●●●●●●●●●●●●●●●●  demo-v2-con-10-rus  1          1       4.4.0-2765  10.3.0.101     12.123.123.12   Y
+con://●●●●●●●●●●●●●●●●●●●●●●  demo-v2-con-3-amer  1          1       4.4.0-2765  10.1.4.83      12.123.123.123  Y
+con://●●●●●●●●●●●●●●●●●●●●●●  tmelab-sfo          1          1       4.4.0-2765  192.168.2.101  12.123.123.12   Y
 ```
 
 To integrate connector health into your monitoring system, use the `--perf` option.
@@ -82,10 +82,10 @@ Caveats (let us know if you need it):
 
 Example:
 ```
-$ akamai eaa connector con://e_0nShZBQ7esNAC3ZEkhSQ swap con://cht3_GEjQWyMW9LEk7KQfg
+$ akamai eaa connector con://●●●●●●●●●●●●●●●●●●●●●● swap con://●●●●●●●●●●●●●●●●●●●●●●
 #Operation,connector-id,connector-name,app-id,app-name
-+,con://cht3_GEjQWyMW9LEk7KQfg,demo-v2-con-1-amer,app://nSFDNGYARHeZGNlweIX7Wg,Speedtest (v2.1)
--,con://e_0nShZBQ7esNAC3ZEkhSQ,demo-v2-con-3-amer,app://nSFDNGYARHeZGNlweIX7Wg,Speedtest (v2.1)
++,con://●●●●●●●●●●●●●●●●●●●●●●,demo-v2-con-1-amer,app://●●●●●●●●●●●●●●●●●●●●●●,Speedtest (v2.1)
+-,con://●●●●●●●●●●●●●●●●●●●●●●,demo-v2-con-3-amer,app://●●●●●●●●●●●●●●●●●●●●●●,Speedtest (v2.1)
 Connector swapped in 1 application(s).
 Updated application(s) is/are marked as ready to deploy
 ```

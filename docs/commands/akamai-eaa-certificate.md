@@ -13,7 +13,7 @@ Example with a wildcard certificate:
 ```
 $ akamai eaa cert | head -n1
 #Certificate-ID,cn,type,expiration,days left,hosts
-crt://KXi553saQSCeNI1_WH6xuA,*.akamaidemo.net,Custom,2031-06-05T22:56:34,3307,*.akamaidemo.net+akamaidemo.net
+crt://●●●●●●●●●●●●●●●●●●●●●●,*.akamaidemo.net,Custom,2031-06-05T22:56:34,3307,*.akamaidemo.net+akamaidemo.net
 ```
 
 ## Rotate certificates
