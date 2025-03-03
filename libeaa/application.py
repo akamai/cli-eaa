@@ -542,7 +542,7 @@ class ApplicationAPI(BaseAPI):
         # where the UUID in the list is the app group UUID
         # Example
         # Add "support"
-        # {"data":[{"apps":["PT0JVO4qS-m1g2-ja7-h_Q"],"groups":[{"uuid_url":"●●●●●●●●●●●●●●●●●●●●●●","enable_mfa":"inherit"}]}]}
+        # {"data":[{"apps":["●●●●●●●●●●●●●●●●●●●●●●"],"groups":[{"uuid_url":"●●●●●●●●●●●●●●●●●●●●●●","enable_mfa":"inherit"}]}]}
         # Remove "support"
         # {"deleted_objects":["●●●●●●●●●●●●●●●●●●●●●●"]}
 
