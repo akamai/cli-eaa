@@ -52,7 +52,7 @@ $ akamai eaa -b app app://●●●●●●●●●●●●●●●●●●
 Use the `update` keyword.
 
 ```
-$ cat ~/eaa_app_datascience_v3.json | akamai eaa app app://mD_Pw1XASpyVJc2JwgICTg update
+$ cat ~/eaa_app_datascience_v3.json | akamai eaa app app://●●●●●●●●●●●●●●●●●●●●●● update
 ```
 
 ## Delete an application

@@ -590,9 +590,9 @@ class ApplicationAPI(BaseAPI):
         :param EAAItem app_moniker: Application Moniker (prefix + UUID)
         :param list connectors: Connector list, expected list item format is dict {'uuid_url': '<UUID>'}
         """
-        # POST on mgmt-pop/apps/DBMcU6FwSjKa7c9sny4RLg/agents
+        # POST on mgmt-pop/apps/●●●●●●●●●●●●●●●●●●●●●●/agents
         # Body
-        # {"agents":[{"uuid_url":"cht3_GEjQWyMW9LEk7KQfg"}]}
+        # {"agents":[{"uuid_url":"●●●●●●●●●●●●●●●●●●●●●●"}]}
         logger.info("Attaching {} connectors...".format(len(connectors)))
         api_resp = self.post(
             'mgmt-pop/apps/{applicationId}/agents'.format(applicationId=app_moniker.uuid),
@@ -610,7 +610,7 @@ class ApplicationAPI(BaseAPI):
         """
         Detach connector/s to an application.
         Payload is different from attach above:
-        {"agents":["cht3_GEjQWyMW9LEk7KQfg"]}
+        {"agents":["●●●●●●●●●●●●●●●●●●●●●●"]}
         """
         logger.info("Detaching {} connectors...".format(len(connectors)))
         api_resp = self.post(
