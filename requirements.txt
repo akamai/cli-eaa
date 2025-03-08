@@ -1,0 +1,7 @@
+cryptography
+requests
+six
+edgegrid-python
+jinja2
+pytz
+python-dateutil

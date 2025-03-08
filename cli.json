@@ -1,0 +1,12 @@
+{
+  "requirements": {
+    "python": "3.7.0"
+  },
+  "commands": [
+    {
+      "name": "eaa",
+      "version": "0.6.11",
+      "description": "Akamai CLI for Enterprise Application Access (EAA)"
+    }
+  ]
+}

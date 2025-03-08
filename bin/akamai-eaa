@@ -1,0 +1,225 @@
+#!/usr/bin/env python3
+
+# Copyright 2024 Akamai Technologies, Inc. All Rights Reserved
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+cli-eaa
+Command Line Input tool for Akamai Enterprise Application Access
+:url: https://github.com/akamai/cli-eaa
+:author: Antoine Drochon <androcho@akamai.com>
+"""
+
+from __future__ import print_function
+import sys
+import time
+import platform
+import logging
+import fnmatch
+import signal
+import http.client as http_client
+from json import dumps
+from math import ceil
+from urllib.parse import parse_qsl
+import os
+
+# cli-eaa
+import _paths  # noqa: F401
+from common import cli, config, BaseAPI, EAAItem, __version__
+from eventlog import EventLogAPI
+from cert import CertificateAPI
+from application import ApplicationAPI
+from idp import IdentityProviderAPI
+from connector import ConnectorAPI
+from directory import DirectoryAPI
+from reporting import ReportingAPI
+
+verbose = getattr(config, 'verbose', False)
+
+LOG_FMT = '%(asctime)s %(name)s %(levelname).1s %(message)s'
+
+
+class SearchAPI(BaseAPI):
+    """
+    Search EAA applications
+    2020-08-07: migrated to {OPEN} API
+    """
+
+    SCAN_LIMIT = 1000
+
+    def __init__(self, config):
+        super(SearchAPI, self).__init__(config, api=BaseAPI.API_Version.OpenAPI)
+
+    def search_app(self, search_pattern: str=None):
+        app_api = ApplicationAPI(config, BaseAPI.API_Version.OpenAPIv3)
+        all_apps = app_api.list(fields=['app_type', 'name', 'host', 'cname', 'cert', 'resource_status'])
+        app_count = len(all_apps)
+        app_found = 0
+        cli.header('#app_id,type,name,host,cname,cert_id,status,reachable')
+
+        for a in all_apps:
+            if not search_pattern or (
+                search_pattern and (
+                    fnmatch.fnmatch(a.get('name') or "", "*%s*" % search_pattern) or
+                    fnmatch.fnmatch(a.get('host') or "", "*%s*" % search_pattern) or
+                    fnmatch.fnmatch(a.get('cname') or "", "*%s*" % search_pattern)
+                )
+            ):
+                app_found += 1
+                cli.print(('{scheme}{app_id},{app_type},{name},{host},{cname},'
+                            '{cert_scheme}{cert_id},{status},{reach}').format(
+                    scheme=EAAItem.Type.Application.scheme,
+                    app_id=a.get('uuid_url'),
+                    app_type=ApplicationAPI.Type(a.get('app_type')).name,
+                    name=a.get('name'),
+                    host=a.get('host'),
+                    cname=a.get('cname'),
+                    cert_scheme=EAAItem.Type.Certificate.scheme if a.get('cert') else '',
+                    cert_id=a.get('cert') or '-',
+                    status=ApplicationAPI.Status(a.get('resource_status', {}).get('app_status')).name or "-",
+                    reach=('Y' if a.get('resource_status', {}).get('host_reachable') else 'F'))
+                )
+
+        # CLI ouput footer
+        if not config.batch:
+            if app_found != app_count:
+                cli.footer("Found %s app(s), total %s app(s)" % (app_found, app_count))
+            else:
+                cli.footer("%s app(s)" % app_count)
+
+
+def setup_logging():
+
+    logging.basicConfig(filename=config.logfile, level=cli.log_level(), format=LOG_FMT)
+
+    # Special handling for the Requests library
+    if config.debug:
+        requests_log = logging.getLogger("requests.packages.urllib3")
+        http_client.HTTPConnection.debuglevel = 1
+
+        def httpclient_log(*args):
+            requests_log.log(logging.DEBUG, " ".join(args))
+        http_client.print = httpclient_log
+
+
+if __name__ == "__main__":
+
+    setup_logging()
+    logging.debug("Python %s" % platform.python_version())
+
+    signal.signal(signal.SIGTERM, cli.exit_gracefully)
+
+    try:
+        if config.command == "version":
+            print(__version__)
+        elif config.command in ("log", "l"):
+            events = EventLogAPI(config)
+            events.fetch_logs(cli.exit_gracefully, cli.stop_event)
+        elif config.command in ("search", "s"):
+            s = SearchAPI(config)
+            s.search_app(config.pattern)
+        elif config.command in ("dir", "d"):
+            if config.action is None or config.action == "list":
+                directory_id = None
+                if hasattr(config, 'directory_id'):
+                    directory_id = config.directory_id
+                d = DirectoryAPI(config, directory_id)
+                d.list_directories(stop_event=cli.stop_event)
+            else:
+                d = DirectoryAPI(config, config.directory_id)
+                if config.action == "sync":
+                    d.synchronize()
+                elif config.action == "addgroup":
+                    d.addgroup(config.dn)
+                elif config.action == "addovlgroup":
+                    d.addoverlaygroup(config.group)
+                elif config.action == "syncgroup":
+                    d.synchronize_group(config.group_uuid)
+                else:
+                    raise Exception("Unsupported directory action: %s" % config.action)
+        elif config.command in ("app", "a"):
+            a = ApplicationAPI(config)
+            a.process_command()
+        elif config.command in ("connector", "c", "con"):
+            c = ConnectorAPI(config)
+            perf = hasattr(config, 'perf') and config.perf
+            if config.action == "create":
+                c.create(config)
+            elif config.action == "swap":
+                c.swap(config.connector_id, config.new_connector_id, config.dryrun)
+            elif config.action == "apps":
+                con_moniker = EAAItem(config.connector_id)
+                c.list_apps(con_moniker, perf=perf)
+            elif config.action in ("delete", "rm"):
+                con_moniker = EAAItem(config.connector_id)
+                c.remove(con_moniker)
+            elif config.action == "allowlist":
+                c.allow_list()
+            else:
+                # if command is "akamai eaa connector" we default to "list"
+                # Unless the long form "akamai eaa connector list" is used
+                # the ArgumentParser won't have the attribute set
+                json = hasattr(config, 'json') and config.json
+                show_apps = hasattr(config, 'showapps') and config.showapps
+                tail = hasattr(config, 'tail') and config.tail
+                interval = hasattr(config, 'interval') and config.interval
+                c.list(perf, json, show_apps, tail, interval, cli.stop_event)
+        elif config.command in ("certificate", "cert"):
+            c = CertificateAPI(config)
+            if config.action is None or config.action == "list" or config.certificate_id is None:
+                c.list()
+            elif config.action == "delete":
+                c.delete()
+            elif config.action == "rotate":
+                c.rotate()
+            elif config.action == "status":
+                c.status()
+        elif config.command in ("idp", "i"):
+            i = IdentityProviderAPI(config)
+            i.list()
+        elif config.command in ("report", "reports", "r"):
+            r = ReportingAPI(config)
+            if config.report_name == "clients":
+                r.clients()
+            elif config.report_name == "last_access":
+                r.last_access(config.start, config.end, config.app)
+        elif config.command in ("info", ):
+            r = ReportingAPI(config)
+            r.tenant_info()
+        elif config.command in ("dp", ):
+            if config.dpcommand == "inventory":
+                s = ReportingAPI(config)
+                s.deviceposture_inventory(config.tail, config.interval)
+            elif config.dpcommand == "history":
+                s = ReportingAPI(config)
+                s.deviceposture_devicehistory(config.device_id)
+            else:
+                print("invalid Device Posture command: {config.dpcommand}")
+        else:
+            config.parser.print_help()
+            sys.exit(1)
+    except KeyboardInterrupt:
+        print("cli-eaa interrupted.")
+        sys.exit(2)
+    except BrokenPipeError:
+        # Python flushes standard streams on exit; redirect remaining output
+        # to /dev/null to avoid another BrokenPipeError at shutdown
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(devnull, sys.stdout.fileno())
+        sys.exit(1)  # Python exits with error code 1 on EPIPE
+    except Exception:
+        logging.exception("cli-eaa general exception")
+        sys.exit(200)
+
+# end of file

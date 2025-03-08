@@ -1,0 +1,74 @@
+{
+    "eaa_cli_comment": [
+        "Template to create a client-app type=tunnel with Terraform",
+        "This template require cli-eaa 0.7.0"
+    ],
+
+    {% set app_host = cli_randomstring(16) %}
+
+    {# ----- Connectors ------ #}
+    {% set connectors = CONNECTOR_NAMES.split(',') %}
+    "agents": [{% for c in connectors %}
+    {
+        "name": "{{ c }}",
+        "uuid_url": "{{ cli_connector(c) }}"
+    }{% if not loop.last %},{% endif %}
+    {% endfor %}],
+
+    "app_category": {},
+    "app_logo": "",
+    "app_profile": 9,
+    "app_profile_id": null,
+    "app_type": 4,
+    "auth_agent": null,
+    "auth_enabled": "true",
+    "auth_type": 1,
+    "client_app_mode": 2,
+    "cname": "{{ app_host }}.go.akamai-access.com",
+    "description": "{{ APP_DESCRIPTION }}",
+    "domain": 2,
+    "domain_suffix": "go.akamai-access.com",
+    "host": "{{ app_host }}",
+
+    {# ----- IdP ------ #}
+    {% set idp = cli_idp(IDP_NAME) %}
+    "idp": {
+        "idp_id": "{{ idp.uuid_url }}",
+        "name": "{{ idp.name }}"
+    },
+
+    {# ----- Directory ------ #}
+    {% set dir = cli_directory(DIRECTORY_NAME) %}
+    "directories": [{
+        "name": "{{ dir.name }}",
+        "uuid_url": "{{ dir.uuid_url }}"
+    }],
+
+    {# ----- Groups ------ #}
+    {% set groups = GROUP_NAMES.split(',') %}
+    "groups": [
+        {% for scanned_name in groups %}
+        {% set g = cli_group(dir.uuid_url, scanned_name) %}
+        {
+            "name": "{{ g.name }}",
+            "uuid_url": "{{ g.uuid_url }}"
+        }{% if not loop.last %},{% endif %}
+        {% endfor %}
+    ],
+
+
+    "name": "{{ APP_NAME }}",
+    "pop": "{{ cli_cloudzone(CLOUDZONE_NAME) }}",
+    "tunnel_internal_hosts": [
+        {
+            "host": "{{ TUNNEL_DESTINATION_HOST_OR_IP }}",
+            "port_range": "{{ TUNNEL_DESTINATION_PORTS }}",
+            "proto_type": 3
+        }
+    ],
+    "supported_client_version": 2,
+    "urllocation": [],
+    "advanced_settings": {
+        "x_wapp_read_timeout": "900"
+    }
+}

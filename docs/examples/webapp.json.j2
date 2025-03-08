@@ -1,0 +1,28 @@
+{
+    "eaa_cli_comment": [
+        "This is an example of JSON template to create an EAA web application ",
+        "with a single command line using Akamai CLI and EAA package.",
+	    "To create the app, use the following command:",
+        "cat webapp.json.j2 | akamai eaa app - create",
+        "",
+        "Replace the relevant configuration settings to match your environment."
+    ],
+
+    {#- Jinja variable to allow create unique app 
+        every time the command is executed -#}
+    {% set random_appsuffix = range(1, 10000) | random %}
+
+    "app_profile": {{ AppProfile.HTTP.value }},
+    "domain" : {{ AppDomainType.Akamai.value }},
+    "name": "EAA CLI Example web Application {{ random_appsuffix }}",
+    "description" : "This is a test, feel free to delete this app",
+    "host" : "webapp-test-{{ random_appsuffix }}",
+    "pop": "{{ cli_cloudzone('US-East') }}",
+    "servers": [
+        {"origin_host": "10.0.2.3", "orig_tls": "false", "origin_port": 443, "origin_protocol": "https"}
+    ],
+    "agents": {% include 'includes/akdemo-amer-2maincon.json' %},
+    "idp": {% include 'includes/akdemo-idp.json' %},
+    "directories": {% include 'includes/akdemo-directory.json' %},
+    "groups": {% include 'includes/akdemo-groups-default.json' %}
+}

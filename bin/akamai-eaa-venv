@@ -1,0 +1,17 @@
+#!/bin/bash
+
+# Wrapper to enable Python virtual env on the fly, run the command
+# and then deactivate it.
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+VENV_ACTIVATE="${DIR}/../venv/bin/activate"
+
+if [ -f "${VENV_ACTIVATE}" ]; then
+    . "${VENV_ACTIVATE}"
+    "${DIR}/akamai-eaa" "$@"
+    deactivate
+else
+    echo "$0: Cannot activate Python virtual environment: ${VENV_ACTIVATE}"
+    exit 2
+fi
