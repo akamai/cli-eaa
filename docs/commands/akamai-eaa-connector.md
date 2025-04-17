@@ -13,6 +13,12 @@ Display list of connectors and their status.
 - [Swapping connectors](#swapping-connectors)
 - [Show connector outbound allowlist IP/CIDR or hostnames](#show-connector-outbound-allowlist-ipcidr-or-hostnames)
 - [Create a new connector](#create-a-new-connector)
+- [Troubleshoot/debug Connector connectivity to behind-the-firewall network](#troubleshootdebug-connector-connectivity-to-behind-the-firewall-network)
+  - [dig](#dig)
+  - [ping](#ping)
+  - [traceroute](#traceroute)
+  - [lft](#lft)
+  - [curl](#curl)
 
 ## Usage
 
@@ -125,3 +131,122 @@ the `--wait` option.
 ```
 % akamai eaa create --name MyNewConnector --package Docker --debug --wait 600
 ```
+
+## Troubleshoot/debug Connector connectivity to behind-the-firewall network
+
+In Akamai Control Center, you can use tools such as
+`ping` or `traceroute` to troubleshoot the connectivity between the
+EAA connector and the other components it can reach.
+
+Debug command may write output to `stdout` and/or `stderr` which is passed through.  
+Debug command return code is passthrough although be aware not all tools returns
+great than zero value in case of failure.
+
+### dig
+
+```
+% akamai eaa connector con://●●●●●●●●●●●●●●●●●●●●●● debug --command dig --arguments www.akamai.com
+
+; <<>> DiG 9.18.12-0ubuntu0.22.04.1-Ubuntu <<>> www.akamai.com
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 27798
+;; flags: qr rd ra; QUERY: 1, ANSWER: 2, AUTHORITY: 0, ADDITIONAL: 1
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 1232
+;; QUESTION SECTION:
+;www.akamai.com.                        IN      A
+
+;; ANSWER SECTION:
+www.akamai.com.         19      IN      A       23.12.147.13
+www.akamai.com.         19      IN      A       23.12.147.29
+
+;; Query time: 8 msec
+;; SERVER: 127.0.0.1#53(127.0.0.1) (UDP)
+;; WHEN: Thu Apr 17 20:32:25 UTC 2025
+;; MSG SIZE  rcvd: 75
+```
+
+### ping
+
+```
+% akamai eaa connector con://●●●●●●●●●●●●●●●●●●●●●● debug --command ping --arguments www.akamai.com
+PING www.akamai.com (23.12.147.29) 56(84) bytes of data.
+64 bytes from a23-12-147-29.deploy.static.akamaitechnologies.com (23.12.147.29): icmp_seq=1 ttl=51 time=3.68 ms
+64 bytes from a23-12-147-29.deploy.static.akamaitechnologies.com (23.12.147.29): icmp_seq=2 ttl=51 time=1.53 ms
+64 bytes from a23-12-147-29.deploy.static.akamaitechnologies.com (23.12.147.29): icmp_seq=3 ttl=51 time=1.54 ms
+64 bytes from a23-12-147-29.deploy.static.akamaitechnologies.com (23.12.147.29): icmp_seq=4 ttl=51 time=1.62 ms
+64 bytes from a23-12-147-29.deploy.static.akamaitechnologies.com (23.12.147.29): icmp_seq=5 ttl=51 time=1.57 ms
+64 bytes from a23-12-147-29.deploy.static.akamaitechnologies.com (23.12.147.29): icmp_seq=6 ttl=51 time=1.65 ms
+
+--- www.akamai.com ping statistics ---
+6 packets transmitted, 6 received, 0% packet loss, time 5007ms
+rtt min/avg/max/mdev = 1.529/1.929/3.677/0.782 ms
+```
+
+### traceroute
+
+```
+% akamai eaa connector con://●●●●●●●●●●●●●●●●●●●●●● debug --command traceroute --arguments www.akamai.com
+traceroute to www.akamai.com (23.12.147.156), 30 hops max, 60 byte packets
+ 1  10.1.3.76 (10.1.3.76)  0.852 ms  0.834 ms  1.047 ms
+ 2  * * *
+ 3  * * *
+ 4  * * *
+ 5  * * *
+ 6  * * *
+ 7  * * *
+ 8  * * *
+ 9  * * *
+10  * * *
+11  * * *
+12  a23-12-147-156.deploy.static.akamaitechnologies.com (23.12.147.156)  3.659 ms  4.113 ms  3.192 ms
+```
+
+### lft
+
+```
+% akamai eaa connector con://●●●●●●●●●●●●●●●●●●●●●● debug --command lft --arguments www.akamai.com:80
+Tracing ......**T
+TTL LFT trace to a72-247-●●●-●●●.deploy.static.akamaitechnologies.com (72.247.●●●.●●●):80/tcp
+ 1  10.1.3.76 1.0ms
+ 2  240.3.●●●.●●● 3.5ms
+ 3  151.148.●●●.●●● 2.8ms
+ 4  151.148.●●●.●●● 2.6ms
+**  [neglected] no reply packets received from TTL 5
+ 6  ●●●.●●●.●●●●●.●●●.netarch.akamai.com (23.209.●●●.●●●) 3.2ms
+**  [neglected] no reply packets received from TTL 7
+ 8  [target open] a72-247-●●●-●●●.deploy.static.akamaitechnologies.com (72.247.●●●.●●●):80 3.5ms
+```
+
+### curl
+
+```
+% akamai eaa connector con://●●●●●●●●●●●●●●●●●●●●●● debug --command curl --arguments http://whatismyip.akamai.com
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0*   Trying 104.117.182.11:80...
+* Connected to whatismyip.akamai.com (104.117.182.11) port 80 (#0)
+> GET / HTTP/1.1
+> Host: whatismyip.akamai.com
+> User-Agent: curl/7.81.0
+> Accept: */*
+> Accept-Charset: ISO-8859-1,utf-8;
+> 
+* Mark bundle as not supporting multiuse
+< HTTP/1.1 200 OK
+< Content-Type: text/html
+< Content-Length: 14
+< Expires: Thu, 17 Apr 2025 20:27:34 GMT
+< Cache-Control: max-age=0, no-cache, no-store
+< Pragma: no-cache
+< Date: Thu, 17 Apr 2025 20:27:34 GMT
+< Connection: keep-alive
+< 
+{ [14 bytes data]
+100    14  100    14    0     0    142      0 --:--:-- --:--:-- --:--:--   142
+* Connection #0 to host whatismyip.akamai.com left intact
+123.123.123.123
+```
+

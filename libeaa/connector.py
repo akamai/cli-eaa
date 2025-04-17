@@ -21,6 +21,7 @@ import datetime
 from functools import lru_cache
 import io
 import csv
+import sys
 from dateutil.parser import parse
 import pytz
 from enum import Enum
@@ -116,6 +117,44 @@ class ConnectorAPI(BaseAPI):
                 if len(perf_by_app.get('histogram_data', [])[-1]) >= 1:
                     perf_by_host[perf_by_app.get('app_name')] = perf_by_app.get('histogram_data')[-1]
         return perf_by_host
+
+    def debug_command(self, connector_id, command, arguments):
+        command_code = {'dig': 1, 'ping': 2, 'traceroute': 3, 'lft': 4, 'curl': 5}
+        if command not in command_code.keys():
+            cli.print_error(f"Invalid command {command}. Valid commands: {','.join(command_code.keys())}")
+            exit(2)
+        con_moniker = EAAItem(connector_id)
+        connector = self.load(con_moniker)
+        if not connector.get('debug_channel_permitted'):
+            cli.print_error(f"Error: This connector {connector_id} debug setting must be enabled to run the command.")
+            cli.exit(2)
+
+        payload = {"debug_command_id": command_code.get(command), "debug_args": arguments}
+        debug_resp = self.post(f"mgmt-pop/agents/{con_moniker.uuid}/debug", json=payload)
+        logging.info(f"POST response HTTP/{debug_resp.status_code}\n{debug_resp.text}")
+
+        data_status = None
+
+        while data_status is None or data_status == "PENDING":
+            time.sleep(0.1)
+            result_resp = self.post(f"mgmt-pop/agents/{con_moniker.uuid}/status", json={'id': debug_resp.json().get('id')})
+            # print(result_resp.text)
+            command_status = result_resp.json().get("status")
+            if command_status == "executed":
+                data_status = result_resp.json().get('data').get("status")
+                if data_status == "BADCOMMAND":
+                    cli.print_error("Bad command")
+                    exit(3)
+                elif data_status == "PENDING":
+                    continue
+                command_data = result_resp.json().get('data').get('data')
+                d = json.loads(command_data)
+                sys.stdout.write(d.get('stdout'))
+                sys.stderr.write(d.get('stderr'))
+                exit(d.get('return_code'))
+            else:
+                print(f"Oops nothing (yet) - command status = {command_status}")
+
 
     def list_once(self, perf=False, json_fmt=False, show_apps=False):
         """

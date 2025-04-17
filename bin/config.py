@@ -19,11 +19,14 @@
 import os
 import argparse
 import time
+import logging
 
 from configparser import ConfigParser
 
 import _paths
 from error import rc_error, cli_exit_with_error
+
+logger = logging.getLogger(__name__)
 
 
 def strtobool(value):
@@ -215,6 +218,11 @@ class EdgeGridConfig():
         allowlist_parser.add_argument('--since-time', dest="since_time", default=None, 
             help='Only print endpoints updated after a specific date (RFC3339)')
 
+        debug_parser = subsub.add_parser("debug", help="Run debug commmand")
+        debug_parser.add_argument('--command', '-c', dest="command_tool", 
+                                  help='Command tool to use: dig, ping, traceroute, lft or curl')
+        debug_parser.add_argument('--arguments', '--args', '-a', dest="command_arguments", help='arguments of the command')
+
         subparsers.add_parser('idp', aliases=["i"], help='Manage EAA Identity Providers')
 
         info_parser = subparsers.add_parser('info', help='Display tenant info (cloud zone)')
@@ -249,7 +257,7 @@ class EdgeGridConfig():
         parser.add_argument('--section', '-c', default=os.environ.get('AKAMAI_EDGERC_SECTION', 'default'),
                             metavar='credentials_file_section', action='store',
                             help=' Credentials file Section\'s name to use [$AKAMAI_EDGERC_SECTION]')
-        parser.add_argument('--accountkey', '--account-key', default=os.environ.get('AKAMAI_EDGERC_ACCOUNT_KEY', None),
+        parser.add_argument('--accountkey', '--account-key', dest='accountkey', default=os.environ.get('AKAMAI_EDGERC_ACCOUNT_KEY', None),
                             help=' Account Switch Key [$AKAMAI_EDGERC_ACCOUNT_KEY]')
 
         parser.add_argument('--verbose', '-v', default=False, action='store_true', help=' Verbose mode')
@@ -292,6 +300,10 @@ class EdgeGridConfig():
                 # ConfigParser lowercases magically
                 if key not in arguments or arguments[key] is None:
                     arguments[key] = value
+                    # TODO: deal generically with aliases, this one was particularly critical
+                    # hence handled manually
+                    if key == "account_key":
+                        arguments['accountkey'] = value
                 else:
                     print("Missing configuration file.")
                     print("Run python gen_edgerc.py to get your credentials file set up "

@@ -232,6 +232,14 @@ class BaseAPI(object):
                 self._session.proxies['https'] = 'http://%s' % config.proxy
 
         logger.info("Initialized with base_url %s" % self._baseurl)
+        if hasattr(self._config, 'contract_id') and self._config.contract_id:
+            logger.debug(f'contractId={self._config.contract_id}')
+        else:
+            logger.debug("No contract ID provided.")
+        if hasattr(self._config, 'accountkey') and self._config.accountkey:
+            logger.debug(f'accountSwitchKey={self._config.accountkey}')
+        else:
+            logger.debug("No accountkey provided.")
 
     def user_agent(self):
         return f"{self._config.ua_prefix} cli-eaa/{__version__}"
