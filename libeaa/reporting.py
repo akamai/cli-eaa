@@ -210,7 +210,7 @@ class ReportingAPI(BaseAPI):
         # params
         resp = self.get('mgmt-pop/application-reports/ops/query', params=params)
         if resp.status_code != 200:
-            cli.print_error("Unexpected response {resp.url}: HTTP/{resp.status_code}")
+            cli.print_error(f"Unexpected response {resp.url}: HTTP/{resp.status_code}")
             cli.exit(2)
 
         data = resp.json().get('data', [])

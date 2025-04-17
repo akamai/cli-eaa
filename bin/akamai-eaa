@@ -166,6 +166,8 @@ if __name__ == "__main__":
                 c.remove(con_moniker)
             elif config.action == "allowlist":
                 c.allow_list()
+            elif config.action == "debug":
+                c.debug_command(config.connector_id, config.command_tool, config.command_arguments)
             else:
                 # if command is "akamai eaa connector" we default to "list"
                 # Unless the long form "akamai eaa connector list" is used
