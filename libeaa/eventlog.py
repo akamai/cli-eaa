@@ -162,7 +162,9 @@ class EventLogAPI(common.BaseAPI):
             75: "cloud_zone",      # Introduced in EAA 2022.02
             77: "error_code",      # Introduced in EAA 2022.02
             79: "client_process",  # Introduced in EAA 2022.02
-            81: "client_version"   # Introduced in EAA 2022.02
+            81: "client_version",  # Introduced in EAA 2022.02
+            83: "srvty",           # Introduced in EAA 2025.03
+            85: "appname"          # Introduced in EAA 2025.03
         }
 
         output_dict = {}
