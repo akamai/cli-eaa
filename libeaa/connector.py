@@ -26,7 +26,7 @@ from dateutil.parser import parse
 import pytz
 from enum import Enum
 
-from common import cli, BaseAPI, EAAItem
+from common import cli, BaseAPI, EAAItem, CLIAPIException
 from application import ApplicationAPI
 
 
@@ -164,8 +164,8 @@ class ConnectorAPI(BaseAPI):
         url_params = {'expand': 'true', 'limit': ConnectorAPI.LIMIT_SOFT}
         data = self.get('mgmt-pop/agents', params=url_params)
         if data.status_code != 200:
-            cli.print_error(f"API Error HTTP/{data.status_code} for {data.url}")
-            cli.exit(2)
+            message = f"API Error HTTP/{data.status_code} for {data.url}"
+            raise CLIAPIException(message)
 
         dt = datetime.datetime.now(tz=datetime.timezone.utc)
         connectors = data.json()
@@ -277,8 +277,9 @@ class ConnectorAPI(BaseAPI):
                 else:
                     break
             except Exception as e:
-                if follow:
-                    logging.error(f"General exception {e}, since we are in follow mode (--tail), we keep going.")
+                if follow and isinstance(e, CLIAPIException):
+                    logging.error(f"{type(e).__name__} {e}, since we are in follow mode (--tail), retry in {interval} sec.")
+                    stop_event.wait(interval)
                 else:
                     raise
 
@@ -401,6 +402,7 @@ class ConnectorAPI(BaseAPI):
         else:
             line_fmt = "{app_id},{app_name},{do_ver}"
             cli.header("#app_id,app_name,do_ver")
+        c = 0
         for c, (app_id, app_name, app_host, do_ver) in enumerate(self.findappbyconnector(con_moniker), start=1):
             perf_data = {}
             if perf:
