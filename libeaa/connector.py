@@ -1,4 +1,4 @@
-# Copyright 2024 Akamai Technologies, Inc. All Rights Reserved
+# Copyright 2025 Akamai Technologies, Inc. All Rights Reserved
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import logging
-from multiprocessing import Pool
+from concurrent.futures import ThreadPoolExecutor
 import time
 import json
 import signal
@@ -29,6 +29,7 @@ from enum import Enum
 from common import cli, BaseAPI, EAAItem, CLIAPIException
 from application import ApplicationAPI
 
+logger = logging.getLogger(__name__)
 
 class ConnectorAPI(BaseAPI):
     """
@@ -84,22 +85,25 @@ class ConnectorAPI(BaseAPI):
 
         Returns:
             [tuple]: (connector_id, dictionnary with metric name as key)
-        """
+                    """
+
         try:  # This method is executed as separate thread, we need the able to troubleshoot
             systemres_api_url = 'mgmt-pop/agents/{agentid}/system_resource/metrics'.format(agentid=connector_id)
             perf_data_resp = self.get(systemres_api_url, params={'period': '1h'})
-            perf_data = perf_data_resp.json()
+            # Even if the API raise an error, we return a valid dict with None values
             perf_latest = {
                 'timestamp': None,
                 'mem_pct': None, 'disk_pct': None, 'cpu_pct': None,
                 'network_traffic_mbps': None,
                 'dialout_total': None, 'dialout_idle': None, 'active_dialout_count': None
             }
-            if len(perf_data.get('data', [])) >= 1:
-                perf_latest = perf_data.get('data', [])[-1]
+            if perf_data_resp.status_code == 200:
+                perf_data = perf_data_resp.json()
+                if len(perf_data.get('data', [])) >= 1:
+                    perf_latest = perf_data.get('data', [])[-1]
             return (connector_id, perf_latest)
         except Exception:
-            logging.exception("Error during fetching connector performance health.")
+            logger.exception("Error during fetching connector performance health.")
 
     def perf_apps(self, connector_id):
         """
@@ -131,7 +135,7 @@ class ConnectorAPI(BaseAPI):
 
         payload = {"debug_command_id": command_code.get(command), "debug_args": arguments}
         debug_resp = self.post(f"mgmt-pop/agents/{con_moniker.uuid}/debug", json=payload)
-        logging.info(f"POST response HTTP/{debug_resp.status_code}\n{debug_resp.text}")
+        logger.info(f"POST response HTTP/{debug_resp.status_code}\n{debug_resp.text}")
 
         data_status = None
 
@@ -177,11 +181,9 @@ class ConnectorAPI(BaseAPI):
             format_line += ",{ts},{cpu},{mem},{disk},{network},{dialout_total},{dialout_idle},{dialout_active}"
             # Add performance metrics in the report
             perf_res_list = None
-            signal.signal(signal.SIGTERM, signal.SIG_DFL)
-            with Pool(ConnectorAPI.POOL_SIZE) as p:
-                perf_res_list = p.map(self.perf_system, [c.get('uuid_url') for c in connectors.get('objects', [])])
+            with ThreadPoolExecutor(max_workers=ConnectorAPI.POOL_SIZE) as executor:
+                perf_res_list = list(executor.map(self.perf_system, [c.get('uuid_url') for c in connectors.get('objects', [])]))
             perf_res = dict(perf_res_list)
-            signal.signal(signal.SIGTERM, cli.exit_gracefully)
 
         if not json_fmt:
             cli.header(header)
@@ -263,25 +265,18 @@ class ConnectorAPI(BaseAPI):
                                 to stop at the earliest possible
         """
         while True or (stop_event and not stop_event.is_set()):
-            try:
-                start = time.time()
-                self.list_once(perf, json_fmt, show_apps)
-                if follow:
-                    sleep_time = interval - (time.time() - start)
-                    if sleep_time > 0:
-                        stop_event.wait(sleep_time)
-                    else:
-                        logging.error(f"The EAA Connector API is slow to respond (could be also a proxy in the middle)"
-                                      f" holding for {interval} sec.")
-                        stop_event.wait(interval)
+            start = time.time()
+            self.list_once(perf, json_fmt, show_apps)
+            if follow:
+                sleep_time = interval - (time.time() - start)
+                if sleep_time > 0:
+                    stop_event.wait(sleep_time)
                 else:
-                    break
-            except Exception as e:
-                if follow and isinstance(e, CLIAPIException):
-                    logging.error(f"{type(e).__name__} {e}, since we are in follow mode (--tail), retry in {interval} sec.")
+                    logger.error(f"The EAA Connector API is slow to respond (could be also a proxy in the middle)"
+                                    f" holding for {interval} sec.")
                     stop_event.wait(interval)
-                else:
-                    raise
+            else:
+                break
 
     @lru_cache(maxsize=1)
     def all_apps(self, exp):
@@ -366,7 +361,7 @@ class ConnectorAPI(BaseAPI):
         exp = now - now % (-1 * ConnectorAPI.APP_CACHE_TTL)
         apps = self.all_apps(exp)
 
-        logging.debug("Searching app using %s..." % connector_moniker)
+        logger.debug("Searching app using %s..." % connector_moniker)
         for app in apps.get('objects', []):
             # Only tunnel apps are using Dialout Version 2
             dialout_ver = 2 if app.get('app_profile') == ApplicationAPI.Profile.TCP.value else 1
@@ -501,7 +496,7 @@ class ConnectorAPI(BaseAPI):
             connector_info = self.load(connector_moniker)
             if connector_info.get('download_url'):
                 break
-            logging.debug(f"Wait {wait_interval}s...")
+            logger.debug(f"Wait {wait_interval}s...")
             time.sleep(wait_interval)
             wait_interval = min(wait_interval * bakeoff_factor, bakeoff_max)
 

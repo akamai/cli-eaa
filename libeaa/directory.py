@@ -23,7 +23,9 @@ import json
 
 # cli-eaa modules
 import util
-from common import cli, BaseAPI, EAAItem
+from common import cli, BaseAPI, EAAItem, CLIAPIException
+
+logger = logging.getLogger(__name__)
 
 
 class DirectoryStatus(Enum):
@@ -103,7 +105,7 @@ class DirectoryAPI(BaseAPI):
             ))
 
     def list_users(self, search=None):
-        logging.info("SEARCH %s" % search)
+        logger.info("SEARCH %s" % search)
         url_params = {'limit': 0}
         url = 'mgmt-pop/users'
         if search:
@@ -129,24 +131,18 @@ class DirectoryAPI(BaseAPI):
                                 to stop at the earliest possible
         """
         while True or (stop_event and not stop_event.is_set()):
-            try:
-                start = time.time()
-                self.list_directories_once()
-                if self._config.tail:
-                    sleep_time = interval - (time.time() - start)
-                    if sleep_time > 0:
-                        stop_event.wait(sleep_time)
-                    else:
-                        logging.error(f"The EAA Directory API is slow to respond (could be also a proxy in the middle),"
-                                      f" holding for {sleep_time} sec.")
-                        stop_event.wait(sleep_time)
+            start = time.time()
+            self.list_directories_once()
+            if self._config.tail:
+                sleep_time = interval - (time.time() - start)
+                if sleep_time > 0:
+                    stop_event.wait(sleep_time)
                 else:
-                    break
-            except Exception as e:
-                if self._config.tail:
-                    logging.error(f"General exception {e}, since we are in follow mode (--tail), we keep going.")
-                else:
-                    raise
+                    logger.error(f"The EAA Directory API is slow to respond (could be also a proxy in the middle),"
+                                    f" holding for {sleep_time} sec.")
+                    stop_event.wait(sleep_time)
+            else:
+                break
 
     def list_directories_once(self):
         if self._directory_id:
@@ -161,7 +157,7 @@ class DirectoryAPI(BaseAPI):
         else:
             resp = self.get("mgmt-pop/directories")
             if resp.status_code != 200:
-                logging.error("Error retrieve directories (%s)" % resp.status_code)
+                raise CLIAPIException("Error fetching directories (HTTP/%s)" % resp.status_code)
             resj = resp.json()
             if not self._config.batch and not self._config.json:
                 cli.header("#dir_id,dir_name,status,user_count,group_count")
@@ -179,6 +175,8 @@ class DirectoryAPI(BaseAPI):
                 output["group_count"] = d.get("group_count")
                 output["user_count"] = d.get("user_count")
                 output["last_sync"] = d.get("last_sync")
+                output["status"] = d.get("status")
+                output["sync_state"] = d.get("sync_state")
                 if d.get("agents"):
                     output["connectors"] = d.get("agents")
 
@@ -218,7 +216,7 @@ class DirectoryAPI(BaseAPI):
         url = "mgmt-pop/directories/{directory_id}/groups".format(directory_id=self._directory_id)
         resp = self.post(url, json={"status": 1, "group_type": 4, "name": groupname})
         if resp.status_code != 200:
-            logging.error("Error adding group to directory %s" % self._directory_id)
+            logger.error("Error adding group to directory %s" % self._directory_id)
         else:
             cli.footer("Overlay group %s added to directory %s" % (groupname, self._directory_id))
 
@@ -245,12 +243,12 @@ class DirectoryAPI(BaseAPI):
         for scanned_dn in util.argument_tolist((dn,)):
             group = DirectoryAPI.groupname_from_dn(scanned_dn)
             if group:
-                logging.debug("Adding group %s" % (scanned_dn))
+                logger.debug("Adding group %s" % (scanned_dn))
                 resp = self.post(url, json={"name": group, "dn": scanned_dn})
                 if resp.status_code != requests.status_codes.codes.ok:
-                    logging.error(resp.status_code)
+                    logger.error(resp.status_code)
             else:
-                logging.warn("Invalid DN: %s" % scanned_dn)
+                logger.warning("Invalid DN: %s" % scanned_dn)
 
     def synchronize_group(self, group_uuid):
         """
@@ -275,7 +273,7 @@ class DirectoryAPI(BaseAPI):
                 dir_uuid=self._directory_id,
                 group_uuid=group.uuid))
             if resp.status_code != 200:
-                logging.error("Error retrieve group info (%s)" % resp.status_code)
+                logger.error("Error retrieve group info (%s)" % resp.status_code)
                 cli.exit(2)
             group_info = resp.json()
             if group_info.get('last_sync_time'):
