@@ -26,6 +26,9 @@ $ akamai eaa dir list --json --tail | jq .name
 "AKDEMO AD with UPN"
 ```
 
+The JSON output is documented on Akamai [TechDocs](https://techdocs.akamai.com/eaa-api/reference/get-directories).  
+The only change introduced by cli-eaa is the `agents` key is renamed `connectors`.
+
 ## Trigger directory synchronization
 
 ```
