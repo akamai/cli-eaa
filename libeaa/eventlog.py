@@ -162,23 +162,48 @@ class EventLogAPI(common.BaseAPI):
             75: "cloud_zone",      # Introduced in EAA 2022.02
             77: "error_code",      # Introduced in EAA 2022.02
             79: "client_process",  # Introduced in EAA 2022.02
-            81: "client_version"   # Introduced in EAA 2022.02
+            81: "client_version",  # Introduced in EAA 2022.02
+            83: "srvty",           # Service type - L: login proxy, A: access log
+            85: "idp.app",         # Application name
+            87: "eaaclient.txid",  # Transaction Id
+            89: "eaaclient.os",    # Client OS
+            91: "eaaclientinfo.proto", # Connection protocol type
+            93: "client_ghost_addr_geo.region_name", # Edge Transport: Client's Akamai edge network machine region
+            95: "connector_ghost_addr_geo.region_name", # Edge Transport: Connector's Akamai edge network machine region
+            97: "crtt",            # Round trip time between client and Akamai stitcher node (usec)
+            99: "drtt",            # Round trip time between connector and Akamai stitcher node (usec)
+            101: "ortt",           # Round trip time between connector and origin (usec)
+            103: "PE.decision",    # Edge Transport: Policy engine decision
+            105: "PE.start_time",  # Edge Transport: Policy engine transaction start time
+            107: "PE.duration",    # Edge Transport: Policy engine duration to make decision (msec)
+            109: "PE.geoip.region_name", # Edge Transport: Akamai policy engine machine region
+            111: "stitcher.geoip.region_name", # Edge Transport: Akamai stitcher machine region
+            113: "log_type"        # log type pe-report indicates Edge Transport
         }
 
         output_dict = {}
         debug_padding = 22
 
         logger.debug("------ begin debug log line -----")
+        logger.debug("Parsing line %s" % line)
         field_pos = 1  # follows techdoc logic
         for field in line.split(" "):
             if field_pos == 7:
+                if field == "-":
+                    output_dict[field_name] = ""
+                    field_pos += 6
+                    continue
                 field7re = r'(?P<http_method>[A-Z]+)-(?P<url_path>.*)\-(?P<http_ver>HTTP/[0-9\.]*)'
                 field7result = re.search(field7re, field)
-                for subfieldkey in field7result.groupdict():
-                    field_name = access_log_fields.get(field_pos, unknown_field)
-                    logger.debug(f"#{field_pos:02} {field_name:>{debug_padding}}: {field7result[subfieldkey]}")
-                    output_dict[field_name] = field7result[subfieldkey]
-                    field_pos += 2
+                try:
+                    for subfieldkey in field7result.groupdict():
+                        field_name = access_log_fields.get(field_pos, unknown_field)
+                        logger.debug(f"#{field_pos:02} {field_name:>{debug_padding}}: {field7result[subfieldkey]}")
+                        output_dict[field_name] = field7result[subfieldkey]
+                        field_pos += 2
+                except:
+                    cli.print_error("Could not parse http method field %s in %s" % (field, line))
+                    return output_dict
             elif field_pos == 69:
                 if ":" in field:
                     for connector_ip_srcport in field.split(":"):
