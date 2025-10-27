@@ -78,7 +78,7 @@ class EdgeGridConfig():
 
         dir_parser = subparsers.add_parser('dir', aliases=['d'], help='Manage EAA directories')
         dir_parser.add_argument('directory_id', help="EAA Directory ID (e.g. dir://abcdefghi)", nargs='?')
-        subsub = dir_parser.add_subparsers(dest="action", help='Directory action (default is: list)')
+        subsub = dir_parser.add_subparsers(dest="action", required=True, help='Directory action (default is: list)')
 #        subsub.add_parser("list", help="List EAA directories")
 
         listgrp_parser = subsub.add_parser("list", help="List all groups existing in an EAA directory")
@@ -87,6 +87,8 @@ class EdgeGridConfig():
         listgrp_parser.add_argument('--json', action='store_true', default=False, help="Output as JSON")
         listgrp_parser.add_argument('--tail', '-f', action='store_true', default=False,
                                     help="Keep watching directory list, do not exit until Control+C/SIGTERM")
+        listgrp_parser.add_argument('--interval', '-i', default=300, type=float,
+                                 help='Interval between update (works with --tail only)')
         listgrp_parser.add_argument('search_pattern', nargs='?', help="Search pattern")
 
         addgrp_parser = subsub.add_parser("addgroup", help="Add Group")

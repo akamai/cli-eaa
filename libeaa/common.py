@@ -17,7 +17,7 @@ Common class / function for cli-eaa
 """
 
 #: cli-eaa version [PEP 8]
-__version__ = '0.6.11'
+__version__ = '0.6.12'
 
 import sys
 from threading import Event
@@ -27,6 +27,7 @@ import hmac
 import hashlib
 from urllib.parse import urljoin, parse_qs
 from enum import Enum, IntEnum
+from urllib3.util.retry import Retry
 
 # 3rd party libs
 import six
@@ -97,6 +98,14 @@ class CLIFatalException(Exception):
     """
     When raised, this exception should cause the cli package to exit
     with a strictly positive error code.
+    """
+    pass
+
+class CLIAPIException(Exception):
+    """
+    When raise, signal the underlying API call encoutered an issue
+    It also imply in a follow/tail mode, we might want to keep trying
+    while backing off.
     """
     pass
 
@@ -201,6 +210,13 @@ class BaseAPI(object):
         self.api_ver = api
 
         if self.api_ver == self.API_Version.Legacy:  # Prior to {OPEN} API, used for SIEM API only
+            retry_strategy = Retry(
+                total=36,               # total retries - this allow us to retry for about 1 hour
+                backoff_factor=1,       # sleep between retries: 1s, 2s, 4s...
+                status_forcelist=[429, 500, 502, 503, 504],  # response status codes to retry
+                allowed_methods=["HEAD", "GET", "POST"]  # verbs to retry include POST because it's still only READ with event logs
+            )
+            retry_adapter = requests.adapters.HTTPAdapter(max_retries=retry_strategy)
             self._content_type_json = {'content-type': 'application/json'}
             self._content_type_form = \
                 {'content-type': 'application/x-www-form-urlencoded'}
@@ -217,13 +233,22 @@ class BaseAPI(object):
                 max_retries=requests.adapters.Retry(total=5, backoff_factor=1, allowed_methods=["GET", "POST"])
             )
             self._session.mount("https://", siem_api_adapter)
+            self._session.mount("https://", retry_adapter)
         else:  # EAA {OPEN} API
+            retry_strategy = Retry(
+                total=36,               # total retries - this allow us to retry for about 1 hour
+                backoff_factor=1,       # sleep between retries: 1s, 2s, 4s...
+                status_forcelist=[429, 500, 502, 503, 504],  # response status codes to retry
+                allowed_methods=["HEAD", "GET"]  # verbs to retry, no POST here.
+            )
+            retry_adapter = requests.adapters.HTTPAdapter(max_retries=retry_strategy)
             if self.api_ver == self.API_Version.OpenAPI:
                 self._baseurl = f'https://%s/crux/v1/' % edgerc.get(section, 'host')
             elif self.api_ver == self.API_Version.OpenAPIv3:
                 self._baseurl = f'https://%s/crux/v3/' % edgerc.get(section, 'host')
             self._session = requests.Session()
             self._session.auth = EdgeGridAuth.from_edgerc(edgerc, section)
+            self._session.mount("https://", retry_adapter)
 
         if self._session:
             self._session.headers.update({'User-Agent': self.user_agent()})
