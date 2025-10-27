@@ -191,7 +191,7 @@ class EventLogAPI(common.BaseAPI):
             if field_pos == 7:
                 if field == "-":
                     output_dict[field_name] = ""
-                    field_pos +=6
+                    field_pos += 6
                     continue
                 field7re = r'(?P<http_method>[A-Z]+)-(?P<url_path>.*)\-(?P<http_ver>HTTP/[0-9\.]*)'
                 field7result = re.search(field7re, field)
