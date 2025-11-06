@@ -190,6 +190,7 @@ class EventLogAPI(common.BaseAPI):
         for field in line.split(" "):
             if field_pos == 7:
                 if field == "-":
+                    field_name = access_log_fields.get(field_pos, unknown_field)
                     output_dict[field_name] = ""
                     field_pos += 6
                     continue
