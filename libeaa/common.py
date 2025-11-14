@@ -17,7 +17,7 @@ Common class / function for cli-eaa
 """
 
 #: cli-eaa version [PEP 8]
-__version__ = '0.7.0'
+__version__ = '0.7.1'
 
 import sys
 from threading import Event
