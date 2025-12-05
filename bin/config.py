@@ -1,5 +1,5 @@
 """
- Copyright 2024 Akamai Technologies, Inc. All Rights Reserved.
+ Copyright 2025 Akamai Technologies, Inc. All Rights Reserved.
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
 
@@ -118,6 +118,9 @@ class EdgeGridConfig():
         # New: akamai eaa app xyz add_dnsexception www.abcd.efg
         #      akamai eaa app xyz del_dnsexception www.abcd.efg
         
+        #
+        # Applications
+        #
         app_parser = subparsers.add_parser('app', aliases=["a"], help='Manage EAA applications')
         app_parser.add_argument(dest='application_id', help="Application ID, AppGroup ID or '-'")
         subsub = app_parser.add_subparsers(dest="action", help='Application action')
@@ -148,7 +151,9 @@ class EdgeGridConfig():
         addgrp_parser = subsub.add_parser("addgroup", help="Add group(s) to application, app ID and appgroup ID must provided")
         addgrp_parser.add_argument(dest="appgrp_id", nargs="+",
                                    help='Add group(s) to application')
-
+        #
+        # Certificates
+        #
         cert_parser = subparsers.add_parser('certificate', aliases=["cert"], help='Manage EAA Certificates')
         cert_parser.add_argument(dest='certificate_id', nargs="?", default=None,
                                  help="Certificate ID (e.g. crt://abcdefghi)")
@@ -176,6 +181,9 @@ class EdgeGridConfig():
         access_parser.add_argument('--end', '-e', type=int, default=int(time.time()), 
                                    help="End datetime (EPOCH), default is now")
 
+        #
+        # Connectors
+        #
         con_parser = subparsers.add_parser('connector', aliases=["c", "con"], help='Manage EAA connectors')
         con_parser.add_argument(dest='connector_id', nargs="?", default=None,
                                 help="Connector ID (e.g. con://abcdefghi)")
@@ -185,6 +193,7 @@ class EdgeGridConfig():
 
         list_parser = subsub.add_parser("list", help="List all connectors")
         list_parser.add_argument('--perf', default=False, action="store_true", help='Show performance metrics')
+        list_parser.add_argument('--upgrade', default=False, action="store_true", help='Show Upgrade related metrics')
         list_parser.add_argument('--json', '-j', default=False, action="store_true", help='View as JSON')
         list_parser.add_argument('--showapps', '-a', default=False, action="store_true",
                                  help='Response contains the applications running on the connector (JSON only)')

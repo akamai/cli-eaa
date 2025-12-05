@@ -160,10 +160,13 @@ class ConnectorAPI(BaseAPI):
                 print(f"Oops nothing (yet) - command status = {command_status}")
 
 
-    def list_once(self, perf=False, json_fmt=False, show_apps=False):
+    def list_once(self, perf=False, upgrade=False, json_fmt=False, show_apps=False):
         """
         Display the list of EAA connectors as comma separated CSV or JSON
         TODO: refactor this method, too long
+        params:
+            perf: show performance related attributes
+            upgrade: show upgrade related attributes
         """
         url_params = {'expand': 'true', 'limit': ConnectorAPI.LIMIT_SOFT}
         data = self.get('mgmt-pop/agents', params=url_params)
@@ -189,6 +192,7 @@ class ConnectorAPI(BaseAPI):
             cli.header(header)
         perf_latest = {}
         for total_con, c in enumerate(connectors.get('objects', []), start=1):
+
             if perf:
                 perf_latest = perf_res.get(c.get('uuid_url'), {})
 
@@ -219,6 +223,25 @@ class ConnectorAPI(BaseAPI):
                     "dialout_idle": perf_latest.get('dialout_idle') or ConnectorAPI.NODATA_JSON,
                     "dialout_active": perf_latest.get('active_dialout_count') or ConnectorAPI.NODATA_JSON
                 })
+            if upgrade:
+                data.update({
+                    "last_os_upgrade_attempt_state": c.get('last_os_upgrade_attempt_state') or ConnectorAPI.NODATA_JSON,
+                    "last_os_upgrade_failure_support_data": c.get('last_os_upgrade_failure_support_data') or ConnectorAPI.NODATA_JSON,
+                    "last_os_upgrade_status": c.get('last_os_upgrade_status') or ConnectorAPI.NODATA_JSON,
+                    "last_upgrade_failed_date": c.get('last_upgrade_failed_date') or ConnectorAPI.NODATA_JSON,
+                    "last_upgrade_failed_in": c.get('last_upgrade_failed_in') or ConnectorAPI.NODATA_JSON,
+                    "last_upgrade_status": c.get('last_upgrade_status') or ConnectorAPI.NODATA_JSON,
+                    "last_upgrade_success_date": c.get('last_upgrade_success_date') or ConnectorAPI.NODATA_JSON,
+                    "last_upgrade_success_version": c.get('last_upgrade_success_version') or ConnectorAPI.NODATA_JSON,
+                    "latest_available_os_upgrades": c.get('latest_available_os_upgrades') or ConnectorAPI.NODATA_JSON,
+                    "latest_upgrade_attempt_date": c.get('latest_upgrade_attempt_date') or ConnectorAPI.NODATA_JSON,
+                    "latest_upgrade_attempt_state": c.get('latest_upgrade_attempt_state') or ConnectorAPI.NODATA_JSON,
+                    "latest_upgrade_attempt_version": c.get('latest_upgrade_attempt_version') or ConnectorAPI.NODATA_JSON,
+                    "os_upgrades_up_to_date": c.get('os_upgrades_up_to_date') or ConnectorAPI.NODATA_JSON,
+                    "pending_os_updates": c.get('pending_os_updates') or ConnectorAPI.NODATA_JSON,
+                    "upgrade_rank": c.get('upgrade_rank') or ConnectorAPI.NODATA_JSON                    
+                })
+                
             # Help SIEM with the mapping connector <-> apps
             if show_apps:
                 apps = []
@@ -250,7 +273,7 @@ class ConnectorAPI(BaseAPI):
         if not json_fmt:
             cli.footer("Total %s connector(s)" % total_con)
 
-    def list(self, perf, json_fmt, show_apps=False, follow=False, interval=300, stop_event=None):
+    def list(self, perf, upgrade, json_fmt, show_apps=False, follow=False, interval=300, stop_event=None):
         """
         List the connector and their attributes and status
         The default output is CSV
@@ -261,12 +284,13 @@ class ConnectorAPI(BaseAPI):
             show_apps (bool):   Add an extra field 'apps' as array of application UUID
             follow (bool):      Never stop until Control+C or SIGTERM is received
             interval (float):   Interval in seconds between pulling the API, default is 5 minutes (300s)
+            upgrade (bool):     Show upgrade metrics
             stop_event (Event): Main program stop event allowing the function
                                 to stop at the earliest possible
         """
         while True or (stop_event and not stop_event.is_set()):
             start = time.time()
-            self.list_once(perf, json_fmt, show_apps)
+            self.list_once(perf, upgrade, json_fmt, show_apps)
             if follow:
                 sleep_time = interval - (time.time() - start)
                 if sleep_time > 0:

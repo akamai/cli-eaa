@@ -155,6 +155,7 @@ if __name__ == "__main__":
         elif config.command in ("connector", "c", "con"):
             c = ConnectorAPI(config)
             perf = hasattr(config, 'perf') and config.perf
+            upgrade = hasattr(config, 'upgrade') and config.upgrade
             if config.action == "create":
                 c.create(config)
             elif config.action == "swap":
@@ -177,7 +178,7 @@ if __name__ == "__main__":
                 show_apps = hasattr(config, 'showapps') and config.showapps
                 tail = hasattr(config, 'tail') and config.tail
                 interval = hasattr(config, 'interval') and config.interval
-                c.list(perf, json, show_apps, tail, interval, cli.stop_event)
+                c.list(perf, upgrade, json, show_apps, tail, interval, cli.stop_event)
         elif config.command in ("certificate", "cert"):
             c = CertificateAPI(config)
             if config.action is None or config.action == "list" or config.certificate_id is None:
