@@ -56,6 +56,16 @@ teardown() {
   [ "$status" -eq 0 ]
 }
 
+@test "Connector list (with security upgrade)" {
+  run ${CLI} connector list --json --upgrade
+  [ "$status" -eq 0 ]
+}
+
+@test "Connector list (with performance metrics)" {
+  run ${CLI} connector list --json --perf
+  [ "$status" -eq 0 ]
+}
+
 @test "User access logs" {
     run ${CLI} log access
   [ "$status" -eq 0 ]
