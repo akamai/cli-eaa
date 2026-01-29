@@ -393,7 +393,7 @@ class ConnectorAPI(BaseAPI):
                 app_moniker = EAAItem("app://" + app.get('uuid_url'))
                 con_moniker = EAAItem("con://" + con.get('uuid_url'))
                 app_host = app.get('host')
-                if app.get('domain') == 2:
+                if app.get('host') and app.get('domain') == 2 and app.get('domain_suffix'):
                     app_host += "." + app.get('domain_suffix')
                 if con_moniker == connector_moniker:
                     yield app_moniker, \
@@ -416,11 +416,11 @@ class ConnectorAPI(BaseAPI):
             raise TypeError("con_moniker")
         if perf:
             perf_by_apphost = self.perf_apps(con_moniker.uuid)
-            line_fmt = "{app_id},{app_name},{do_ver},{perf_upd},{active}"
-            cli.header("#app_id,app_name,do_ver,perf_upd,active")
+            line_fmt = "{app_id},{app_name},{app_host},{do_ver},{perf_upd},{active}"
+            cli.header("#app_id,app_name,app_host,do_ver,perf_upd,active")
         else:
-            line_fmt = "{app_id},{app_name},{do_ver}"
-            cli.header("#app_id,app_name,do_ver")
+            line_fmt = "{app_id},{app_name},{app_host},{do_ver}"
+            cli.header("#app_id,app_name,app_host,do_ver")
         c = 0
         for c, (app_id, app_name, app_host, do_ver) in enumerate(self.findappbyconnector(con_moniker), start=1):
             perf_data = {}
@@ -429,6 +429,7 @@ class ConnectorAPI(BaseAPI):
             cli.print(line_fmt.format(
                 app_id=app_id,
                 app_name=app_name,
+                app_host=app_host or ConnectorAPI.NODATA,
                 do_ver=do_ver,
                 perf_upd=perf_data.get('timestamp', ConnectorAPI.NODATA),
                 active=perf_data.get('active', ConnectorAPI.NODATA)
