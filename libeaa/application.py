@@ -36,7 +36,7 @@ class ApplicationAPI(BaseAPI):
     """
 
     LIMIT_INFINITE = 0  # Unless you know what you're doing
-    LIMIT_SOFT = 10000  # Most tenant should accomodate this limit
+    LIMIT_SOFT = 250    # Most tenant should accomodate this limit
 
     class Status(Enum):
         NotReady = 1
