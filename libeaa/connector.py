@@ -314,9 +314,21 @@ class ConnectorAPI(BaseAPI):
         Returns:
             [dict]: JSON dictionnary containing all the applications for this tenant
         """
+        all_apps = []
+        offset = 0
         url_params = {'limit': ApplicationAPI.LIMIT_SOFT, 'expand': 'true'}
-        search_app = self.get('mgmt-pop/apps', params=url_params)
-        return search_app.json()
+        has_more = True
+
+        while has_more:
+            params = url_params.copy()
+            params['offset'] = offset
+            page_results = self.get('mgmt-pop/apps', params=params)
+            page_results_json = page_results.json()
+            logger.info(f"{len(all_apps)} applications found so far, offset {offset}")
+            all_apps.extend(page_results_json.get('objects', []))
+            has_more = page_results_json.get('meta', {}).get('next') is not None
+            offset += ApplicationAPI.LIMIT_SOFT
+        return all_apps
 
     def allow_list(self):
         """
@@ -385,8 +397,8 @@ class ConnectorAPI(BaseAPI):
         exp = now - now % (-1 * ConnectorAPI.APP_CACHE_TTL)
         apps = self.all_apps(exp)
 
-        logger.debug("Searching app using %s..." % connector_moniker)
-        for app in apps.get('objects', []):
+        logger.debug(f"Searching app using {connector_moniker} among {len(apps)} apps...")
+        for app in apps:
             # Only tunnel apps are using Dialout Version 2
             dialout_ver = 2 if app.get('app_profile') == ApplicationAPI.Profile.TCP.value else 1
             for con in app.get('agents', []):
