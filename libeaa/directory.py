@@ -89,20 +89,37 @@ class DirectoryAPI(BaseAPI):
             self._directory_id = self._directory.uuid
 
     def list_groups(self):
-        url_params = {'limit': 0}
         url = 'mgmt-pop/directories/{directory_id}/groups'.format(directory_id=self._directory_id)
-        if self._config.search_pattern:
-            url_params = url_params.update({'q': self._config.search_pattern})
-        resp = self.get(url, params=url_params)
-        resj = resp.json()
+        page_size = 1000
+        offset = 0
+        total_count = None
+
         cli.header("#GroupID,name,last_sync")
-        for u in resj.get('objects'):
-            print('{scheme}{uuid},{name},{last_sync_time}'.format(
-                scheme=EAAItem.Type.Group.scheme,
-                uuid=u.get('uuid_url'),
-                name=u.get('name'),
-                last_sync_time=u.get('last_sync_time')
-            ))
+
+        while total_count is None or offset < total_count:
+            url_params = {'limit': page_size, 'offset': offset}
+            if self._config.search_pattern:
+                url_params['q'] = self._config.search_pattern
+            resp = self.get(url, params=url_params)
+            resj = resp.json()
+            meta = resj.get('meta', {})
+            objects = resj.get('objects', [])
+
+            if total_count is None:
+                total_count = meta.get('total_count', 0)
+                logger.debug("list_groups: total_count=%d" % total_count)
+
+            for u in objects:
+                print('{scheme}{uuid},{name},{last_sync_time}'.format(
+                    scheme=EAAItem.Type.Group.scheme,
+                    uuid=u.get('uuid_url'),
+                    name=u.get('name'),
+                    last_sync_time=u.get('last_sync_time')
+                ))
+
+            offset += len(objects)
+            if not objects:
+                break
 
     def list_users(self, search=None):
         logger.info("SEARCH %s" % search)
