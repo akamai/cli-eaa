@@ -88,7 +88,8 @@ class EventLogAPI(common.BaseAPI):
         By default all fields are extracted as string even if they are integer or float.
         This straights up the type to optimize the JSON ouput.
         """
-        int_fields = ['req_size', 'status_code', 'bytes_out', 'bytes_in', 'con_srcport', 'error_code']
+        int_fields = ['req_size', 'status_code', 'bytes_out', 'bytes_in', 'con_srcport', 'error_code',
+                      'dialin.total', 'dialin.streams.total', 'dialin.streams.active']
         float_fields = ['total_resp_time', 'connector_resp_time', 'origin_resp_time']
         for int_candidate in int_fields:
             if d.get(int_candidate) and isDigit(d.get(int_candidate)):
@@ -178,7 +179,14 @@ class EventLogAPI(common.BaseAPI):
             107: "PE.duration",    # Edge Transport: Policy engine duration to make decision (msec)
             109: "PE.geoip.region_name", # Edge Transport: Akamai policy engine machine region
             111: "stitcher.geoip.region_name", # Edge Transport: Akamai stitcher machine region
-            113: "log_type"        # log type pe-report indicates Edge Transport
+            113: "log_type",        # log type pe-report indicates Edge Transport
+            115: "dialin.prio",
+            117: "dialin.total",
+            119: "dialin.tls_proto",
+            121: "dialin.tls_cipher",
+            123: "dialin.neg",
+            125: "dialin.streams.total",
+            127: "dialin.streams.active"
         }
 
         output_dict = {}
