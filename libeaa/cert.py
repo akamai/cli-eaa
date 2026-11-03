@@ -15,6 +15,7 @@
 from enum import Enum
 import logging
 import json
+import time
 
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
@@ -22,6 +23,8 @@ from cryptography.hazmat.backends import default_backend
 from common import cli, BaseAPI, EAAItem, config
 from application import ApplicationAPI
 from idp import IdentityProviderAPI
+
+IDP_APP_GAP = 600  # seconds
 
 
 class CertificateAPI(BaseAPI):
@@ -154,14 +157,19 @@ class CertificateAPI(BaseAPI):
         """
         Trigger deployment request of all Apps and IdP using the certificate.
         """
+        idp_api = IdentityProviderAPI(config)
+        idps = list(self.findidpbycert(certid))
+        for idp_id, idp_name in idps:
+            cli.print("Deploying IdP %s (%s)..." % (idp_name, idp_id))
+            idp_api.deploy(idp_id)
+        if idps:
+            # EAA rejects app deployment while IdP deployment is in progress
+            cli.print("Waiting %d seconds for IdP deployment before deploying applications..." % IDP_APP_GAP)
+            time.sleep(IDP_APP_GAP)
         app_api = ApplicationAPI(config)
         for app_id, app_name in self.findappsbycert(certid):
             cli.print("Deploying application %s (%s)..." % (app_name, app_id))
             app_api.deploy(app_id)
-        idp_api = IdentityProviderAPI(config)
-        for idp_id, idp_name in self.findidpbycert(certid):
-            cli.print("Deploying IdP %s (%s)..." % (idp_name, idp_id))
-            idp_api.deploy(idp_id)
         cli.print("Deployment(s) in progress, it typically take 3 to 5 minutes")
         cli.print("Use 'akamai eaa cert crt://%s status' to monitor the progress." % certid)
 
