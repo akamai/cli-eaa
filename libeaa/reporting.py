@@ -29,7 +29,22 @@ logger = logging.getLogger(__name__)
 
 class ReportingAPI(BaseAPI):
 
-    LIMIT_ACCESS_REPORT = 5000  #: API limit, 5000 is the max
+    #: Value sent in the API ``limit`` parameter. The server caps the number of
+    #: records actually returned per call regardless of this value, without any
+    #: error or truncation marker (effective cap of 500 observed as of 2026-08).
+    LIMIT_ACCESS_REPORT = 5000
+    #: A response with at least this many records is treated as potentially
+    #: capped by the server and triggers a smaller time range. 250 is the
+    #: maximum ``limit`` documented in the API reference. This must stay at or
+    #: below the effective server-side cap: a higher threshold disables time
+    #: range splitting entirely and records are silently dropped.
+    SPLIT_THRESHOLD = 250
+    #: A response with at least this many records triggers a verification that
+    #: the server does not cap responses below SPLIT_THRESHOLD (see
+    #: last_access()). An effective cap below this value cannot be detected.
+    VERIFY_THRESHOLD = 100
+    #: Do not split time ranges below this duration (seconds).
+    MIN_RANGE_DURATION = 60
 
     def __init__(self, config):
         super(ReportingAPI, self).__init__(config, api=BaseAPI.API_Version.OpenAPI)
@@ -228,6 +243,19 @@ class ReportingAPI(BaseAPI):
         records = []
         split_scan = True
         progress_start = start
+        split_threshold = ReportingAPI.SPLIT_THRESHOLD
+        verified_len = 0  # responses up to this length are confirmed not capped
+        capped_ranges = 0
+
+        def record_key(x):
+            # Identity of a record for this report: downstream aggregation
+            # only uses uid and ts. Other fields may not be stable across
+            # calls, so they must not participate in the comparison.
+            return (x.get('uid'), x.get('ts'))
+
+        def max_sub_ranges():
+            # Never split below MIN_RANGE_DURATION per sub range.
+            return max(1, (end - progress_start) // ReportingAPI.MIN_RANGE_DURATION)
 
         while split_scan:
             logger.debug(f"last_access() | Querying API using {num_sub_ranges} interval(s)...")
@@ -236,25 +264,65 @@ class ReportingAPI(BaseAPI):
                 logger.info(f"last_access() | ### {len(records):,} records so far. Fetching range {index_range+1} of {num_sub_ranges}...")
                 sub_records = self._last_access(r[0], r[1], app)
                 api_calls += 1
-                if len(sub_records) < ReportingAPI.LIMIT_ACCESS_REPORT: # We got the right level of subsplitting, carry on
+
+                if verified_len < len(sub_records) < split_threshold \
+                        and len(sub_records) >= ReportingAPI.VERIFY_THRESHOLD \
+                        and (r[1] - r[0]) > ReportingAPI.MIN_RANGE_DURATION \
+                        and r[1] < int(time.time()) - ReportingAPI.MIN_RANGE_DURATION:
+                    # The server caps responses without any truncation marker,
+                    # so a response below our threshold could still be capped if
+                    # the effective cap is lower than SPLIT_THRESHOLD. Verify by
+                    # fetching both halves of this range and looking for records
+                    # the full-range response did not contain. Skipped near the
+                    # current time, where new events arriving between the calls
+                    # would look like a cap.
+                    mid = (r[0] + r[1]) // 2
+                    halves = self._last_access(r[0], mid, app) + self._last_access(mid, r[1], app)
+                    api_calls += 2
+                    parent_keys = set(record_key(x) for x in sub_records)
+                    extra = [x for x in halves if record_key(x) not in parent_keys]
+                    if extra:
+                        split_threshold = len(sub_records)
+                        logger.warning(f"last_access() | effective per-call cap detected: "
+                                       f"{split_threshold} records, splitting further...")
+                        num_sub_ranges = min(num_sub_ranges * split_factor, max_sub_ranges())
+                        split_scan = True
+                        break
+                    verified_len = len(sub_records)
+
+                if len(sub_records) < split_threshold: # We got the right level of subsplitting, carry on
                     records.extend(sub_records)
                     if r[1] < end: progress_start = r[1] # if we ever have to subsplit, we don't need to redo it for everything
-                    if len(sub_records) < (ReportingAPI.LIMIT_ACCESS_REPORT // split_factor) and r[1] < end:
+                    if len(sub_records) < (split_threshold // split_factor) and r[1] < end:
                         logger.debug("last_access() | Very little data returned, let's oversplit...")
-                        num_sub_ranges = num_sub_ranges // split_factor
+                        num_sub_ranges = max(1, num_sub_ranges // split_factor)
                         split_scan = True
                         break # Triggers a new for loop with new intervals
                     else:
                         split_scan = False # We continue the for loop normally
                 else:
-                    # There is likely more data
-                    # We need smaller sub range
-                    num_sub_ranges = num_sub_ranges * split_factor
-                    logger.debug(f"last_access() | Restarting with smaller time range, dividing by {num_sub_ranges}...")
-                    split_scan = True
-                    break
+                    # This range may be capped: split it smaller, unless
+                    # MIN_RANGE_DURATION prevents any further split, in which
+                    # case records beyond the cap in this range are unreachable.
+                    new_num_sub_ranges = min(num_sub_ranges * split_factor, max_sub_ranges())
+                    if new_num_sub_ranges > num_sub_ranges:
+                        num_sub_ranges = new_num_sub_ranges
+                        logger.debug(f"last_access() | Restarting with smaller time range, dividing by {num_sub_ranges}...")
+                        split_scan = True
+                        break
+                    capped_ranges += 1
+                    logger.warning(f"last_access() | {len(sub_records)} records within a "
+                                   f"{r[1] - r[0]}s range ({r[0]}-{r[1]}), cannot split "
+                                   "any smaller, the remainder for this range is unreachable")
+                    records.extend(sub_records)
+                    if r[1] < end: progress_start = r[1]
+                    split_scan = False # We continue the for loop normally
 
         # end while, we should have all the data now.
+        if capped_ranges:
+            cli.print_error(f"WARNING: {capped_ranges} time range(s) hit the per-call record "
+                            f"cap at the minimum range duration ({ReportingAPI.MIN_RANGE_DURATION}s). "
+                            "Results may be INCOMPLETE.")
 
         processed_records = 0
         last_access_by_user = {}
